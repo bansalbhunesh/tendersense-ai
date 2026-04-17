@@ -1,0 +1,40 @@
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Go
+backend/*.exe
+backend/vendor/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Python
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Demo venv
+demo/.venv/
+demo/__pycache__/
+
+# Uploads & local data
+backend/data/
+data/uploads/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

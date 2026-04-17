@@ -1,0 +1,247 @@
+:root {
+  --bg: #0a1628;
+  --panel: #111f36;
+  --border: #1e3555;
+  --text: #e8eef7;
+  --muted: #8fa3c0;
+  --saffron: #ff9933;
+  --saffron-dim: rgba(255, 153, 51, 0.15);
+  --ok: #3ddc97;
+  --warn: #ffb020;
+  --bad: #ff6b6b;
+  --review: #6cb6ff;
+  --radius: 12px;
+  --font: "DM Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 10% -10%, #132743 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+a {
+  color: var(--saffron);
+}
+
+.shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand strong {
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+}
+
+.brand span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0c1829;
+  color: var(--text);
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+}
+
+button.primary {
+  background: linear-gradient(180deg, #ffad5c, var(--saffron));
+  border-color: #cc7a29;
+  color: #1a0f08;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.badge.ok {
+  background: rgba(61, 220, 151, 0.15);
+  color: var(--ok);
+  border: 1px solid rgba(61, 220, 151, 0.35);
+}
+
+.badge.bad {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff9b9b;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+}
+
+.badge.review {
+  background: rgba(108, 182, 255, 0.12);
+  color: var(--review);
+  border: 1px solid rgba(108, 182, 255, 0.35);
+}
+
+.graph {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.graph-node {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #0c1829;
+}
+
+.graph-node.criterion {
+  border-color: rgba(255, 153, 51, 0.35);
+  background: var(--saffron-dim);
+}
+
+.graph-node.verdict {
+  border-color: rgba(108, 182, 255, 0.35);
+}
+
+.graph-node small {
+  color: var(--muted);
+  display: block;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.tabs button {
+  opacity: 0.85;
+}
+
+.tabs button.active {
+  border-color: var(--saffron);
+  box-shadow: 0 0 0 1px rgba(255, 153, 51, 0.25) inset;
+}
