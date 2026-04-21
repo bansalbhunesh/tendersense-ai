@@ -38,7 +38,8 @@ func CreateTender(db *sql.DB) gin.HandlerFunc {
 
 func ListTenders(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rows, err := db.Query(`SELECT id, title, status, created_at FROM tenders ORDER BY created_at DESC`)
+		uid := c.GetString("user_id")
+		rows, err := db.Query(`SELECT id, title, status, created_at FROM tenders WHERE owner_id=$1 ORDER BY created_at DESC`, uid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -103,11 +104,10 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		docID := uuid.NewString()
 		name := fh.Filename
 		dest := filepath.Join("data/uploads", docID+"_"+name)
-		if err := c.SaveUploadedFile(fh, dest); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
 		uid := c.GetString("user_id")
+
+		// Insert DB record FIRST — if file save fails we can clean up, but we
+		// cannot un-write a file that was saved before a failing DB insert.
 		_, err = db.Exec(`INSERT INTO documents (id, owner_type, owner_id, filename, storage_key, doc_type) VALUES ($1,'tender',$2,$3,$4,'tender')`,
 			docID, tenderID, name, dest)
 		if err != nil {
@@ -115,11 +115,18 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		if err := c.SaveUploadedFile(fh, dest); err != nil {
+			// DB row inserted but file failed — clean up the DB row
+			db.Exec(`DELETE FROM documents WHERE id=$1`, docID)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		var ocrRes struct {
-			Text          string  `json:"text"`
-			Quality       float64 `json:"quality_score"`
-			Pages         []any   `json:"pages"`
-			Engine        string  `json:"engine"`
+			Text    string  `json:"text"`
+			Quality float64 `json:"quality_score"`
+			Pages   []any   `json:"pages"`
+			Engine  string  `json:"engine"`
 		}
 		_ = PostJSON("/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
 		payload, _ := json.Marshal(ocrRes)

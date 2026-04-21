@@ -111,11 +111,15 @@ def _tesseract_image(path: str) -> tuple[str, float]:
     if im is None:
         return "", 0.0
     gray = _preprocess(im)
-    cv2.imwrite(path + ".prep.png", gray)
+    prep_path = path + ".prep.png"
+    cv2.imwrite(prep_path, gray)
     try:
-        data = pytesseract.image_to_data(Image.open(path + ".prep.png"), output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(Image.open(prep_path), output_type=pytesseract.Output.DICT)
     except Exception:
         return "", 0.0
+    finally:
+        if os.path.exists(prep_path):
+            os.remove(prep_path)
     texts = [t for t in data["text"] if t and str(t).strip()]
     confs = [int(c) for c in data["conf"] if c not in ("-1", -1)]
     mean = sum(confs) / len(confs) / 100.0 if confs else 0.5

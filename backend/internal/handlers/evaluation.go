@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,32 +13,43 @@ import (
 func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
-		uid := c.GetString("user_id")
+		uid, _ := c.Get("user_id")
+		userID, _ := uid.(string)
 
-		crows, err := db.Query(`SELECT id, payload FROM criteria WHERE tender_id=$1`, tenderID)
+		// 1. Data Gathering (Read-only, can be outside TX if needed, but safe here)
+		crows, err := db.QueryContext(c.Request.Context(), `SELECT id, payload FROM criteria WHERE tender_id=$1`, tenderID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch criteria"})
 			return
 		}
 		var criteria []map[string]any
 		for crows.Next() {
 			var id string
 			var payload []byte
-			crows.Scan(&id, &payload)
+			if err := crows.Scan(&id, &payload); err != nil {
+				continue
+			}
 			var m map[string]any
-			json.Unmarshal(payload, &m)
-			m["id"] = id
-			criteria = append(criteria, m)
+			if err := json.Unmarshal(payload, &m); err == nil {
+				m["id"] = id
+				criteria = append(criteria, m)
+			}
+		}
+		if err := crows.Err(); err != nil {
+			crows.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading criteria"})
+			return
 		}
 		crows.Close()
+
 		if len(criteria) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "no criteria — upload tender document first"})
 			return
 		}
 
-		brows, err := db.Query(`SELECT id FROM bidders WHERE tender_id=$1`, tenderID)
+		brows, err := db.QueryContext(c.Request.Context(), `SELECT id FROM bidders WHERE tender_id=$1`, tenderID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch bidders"})
 			return
 		}
 		var bidderIDs []string
@@ -46,40 +58,45 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 			brows.Scan(&id)
 			bidderIDs = append(bidderIDs, id)
 		}
+		if err := brows.Err(); err != nil {
+			brows.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading bidders"})
+			return
+		}
 		brows.Close()
+
 		if len(bidderIDs) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no bidders"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no bidders registered for this tender"})
 			return
 		}
 
-		type docRow struct {
-			ID       string
-			Filename string
-			DocType  string
-			OCR      []byte
-		}
 		biddersPayload := []map[string]any{}
 		for _, bid := range bidderIDs {
-			drows, _ := db.Query(`SELECT id, filename, doc_type, ocr_payload FROM documents WHERE owner_type='bidder' AND owner_id=$1`, bid)
+			drows, err := db.QueryContext(c.Request.Context(), `SELECT id, filename, doc_type, ocr_payload FROM documents WHERE owner_type='bidder' AND owner_id=$1`, bid)
+			if err != nil {
+				continue
+			}
 			var docs []map[string]any
 			for drows.Next() {
-				var dr docRow
-				drows.Scan(&dr.ID, &dr.Filename, &dr.DocType, &dr.OCR)
+				var id, fname, dtype string
+				var ocrRaw []byte
+				drows.Scan(&id, &fname, &dtype, &ocrRaw)
 				var ocr map[string]any
-				if len(dr.OCR) > 0 {
-					json.Unmarshal(dr.OCR, &ocr)
+				if len(ocrRaw) > 0 {
+					json.Unmarshal(ocrRaw, &ocr)
 				}
 				docs = append(docs, map[string]any{
-					"id": dr.ID, "filename": dr.Filename, "doc_type": dr.DocType, "ocr": ocr,
+					"id": id, "filename": fname, "doc_type": dtype, "ocr": ocr,
 				})
 			}
 			drows.Close()
 			biddersPayload = append(biddersPayload, map[string]any{"bidder_id": bid, "documents": docs})
 		}
 
+		// 2. AI Service Call (Slow)
 		var aiOut struct {
-			Graph      map[string]any   `json:"graph"`
-			Decisions  []map[string]any `json:"decisions"`
+			Graph       map[string]any   `json:"graph"`
+			Decisions   []map[string]any `json:"decisions"`
 			ReviewItems []map[string]any `json:"review_items"`
 		}
 		err = PostJSON("/v1/evaluate", map[string]any{
@@ -88,37 +105,77 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 			"bidders":   biddersPayload,
 		}, &aiOut)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("AI Service error: %v", err)})
 			return
 		}
 
-		db.Exec(`DELETE FROM decisions WHERE tender_id=$1`, tenderID)
+		// 3. Atomic DB Updates
+		tx, err := db.BeginTx(c.Request.Context(), nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+			return
+		}
+		defer tx.Rollback()
+
+		// Clear old results
+		if _, err := tx.ExecContext(c.Request.Context(), `DELETE FROM decisions WHERE tender_id=$1`, tenderID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear old decisions"})
+			return
+		}
+		if _, err := tx.ExecContext(c.Request.Context(), `DELETE FROM evaluations WHERE tender_id=$1`, tenderID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear old evaluations"})
+			return
+		}
+		if _, err := tx.ExecContext(c.Request.Context(), `DELETE FROM review_queue WHERE tender_id=$1`, tenderID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to clear old review items"})
+			return
+		}
+
+		// Insert new decisions
 		for _, d := range aiOut.Decisions {
-			did := uuid.NewString()
 			bid, _ := d["bidder_id"].(string)
 			crid, _ := d["criterion_id"].(string)
 			payload, _ := json.Marshal(d)
 			sum := ChecksumJSON(json.RawMessage(payload))
-			db.Exec(`INSERT INTO decisions (id, tender_id, bidder_id, criterion_id, payload, checksum) VALUES ($1,$2,$3::uuid,$4,$5::jsonb,$6)`,
-				did, tenderID, bid, crid, string(payload), sum)
+			_, err = tx.ExecContext(c.Request.Context(),
+				`INSERT INTO decisions (id, tender_id, bidder_id, criterion_id, payload, checksum) VALUES ($1,$2,$3::uuid,$4,$5::jsonb,$6)`,
+				uuid.NewString(), tenderID, bid, crid, string(payload), sum)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save decision"})
+				return
+			}
 		}
 
+		// Update evaluation status
 		graphJSON, _ := json.Marshal(aiOut.Graph)
-		db.Exec(`DELETE FROM evaluations WHERE tender_id=$1`, tenderID)
 		eid := uuid.NewString()
-		db.Exec(`INSERT INTO evaluations (id, tender_id, status, graph) VALUES ($1,$2,'complete',$3::jsonb)`, eid, tenderID, string(graphJSON))
+		_, err = tx.ExecContext(c.Request.Context(),
+			`INSERT INTO evaluations (id, tender_id, status, graph) VALUES ($1,$2,'complete',$3::jsonb)`,
+			eid, tenderID, string(graphJSON))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save evaluation"})
+			return
+		}
 
-		db.Exec(`DELETE FROM review_queue WHERE tender_id=$1`, tenderID)
+		// Update review queue
 		for _, r := range aiOut.ReviewItems {
-			rid := uuid.NewString()
 			p, _ := json.Marshal(r)
 			bid, _ := r["bidder_id"].(string)
 			crid, _ := r["criterion_id"].(string)
-			db.Exec(`INSERT INTO review_queue (id, tender_id, bidder_id, criterion_id, status, payload) VALUES ($1,$2::uuid,$3::uuid,$4,'open',$5::jsonb)`,
-				rid, tenderID, bid, crid, string(p))
+			if _, err := tx.ExecContext(c.Request.Context(),
+				`INSERT INTO review_queue (id, tender_id, bidder_id, criterion_id, status, payload) VALUES ($1,$2::uuid,$3::uuid,$4,'open',$5::jsonb)`,
+				uuid.NewString(), tenderID, bid, crid, string(p)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save review item"})
+				return
+			}
 		}
 
-		WriteAudit(db, uid, tenderID, "evaluation.completed", map[string]any{"decisions": len(aiOut.Decisions)})
+		if err := tx.Commit(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to commit changes"})
+			return
+		}
+
+		WriteAudit(db, userID, tenderID, "evaluation.completed", map[string]any{"decisions": len(aiOut.Decisions)})
 		c.JSON(http.StatusOK, gin.H{"evaluation_id": eid, "decisions": len(aiOut.Decisions), "graph": aiOut.Graph})
 	}
 }

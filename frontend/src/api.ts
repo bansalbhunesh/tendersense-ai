@@ -12,6 +12,10 @@ export async function apiFetch(path: string, opts: RequestInit = {}) {
   if (t) headers["Authorization"] = `Bearer ${t}`;
   const res = await fetch(API + path, { ...opts, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("ts_token");
+      // Optional: window.location.href = "/login";
+    }
     const err = await res.text();
     throw new Error(err || res.statusText);
   }

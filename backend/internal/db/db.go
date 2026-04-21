@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -17,6 +18,12 @@ func Connect() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Connection pool tuning for production
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
@@ -24,6 +31,12 @@ func Connect() (*sql.DB, error) {
 }
 
 func Migrate(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	stmts := []string{
 		`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`,
 		`CREATE TABLE IF NOT EXISTS users (
@@ -41,18 +54,25 @@ func Migrate(db *sql.DB) error {
 			status TEXT NOT NULL DEFAULT 'draft',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_tenders_owner_id ON tenders(owner_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_tenders_status ON tenders(status);`,
+
 		`CREATE TABLE IF NOT EXISTS criteria (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
 			payload JSONB NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_criteria_tender_id ON criteria(tender_id);`,
+
 		`CREATE TABLE IF NOT EXISTS bidders (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
 			name TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_bidders_tender_id ON bidders(tender_id);`,
+
 		`CREATE TABLE IF NOT EXISTS documents (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			owner_type TEXT NOT NULL,
@@ -64,6 +84,8 @@ func Migrate(db *sql.DB) error {
 			ocr_payload JSONB,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_type, owner_id);`,
+
 		`CREATE TABLE IF NOT EXISTS evaluations (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
@@ -72,6 +94,8 @@ func Migrate(db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_evals_tender_id ON evaluations(tender_id);`,
+
 		`CREATE TABLE IF NOT EXISTS decisions (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
@@ -81,6 +105,8 @@ func Migrate(db *sql.DB) error {
 			checksum TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_decisions_tender_bidder ON decisions(tender_id, bidder_id);`,
+
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id BIGSERIAL PRIMARY KEY,
 			tender_id UUID,
@@ -99,11 +125,12 @@ func Migrate(db *sql.DB) error {
 			payload JSONB,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_rq_tender_id ON review_queue(tender_id);`,
 	}
 	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
+		if _, err := tx.Exec(s); err != nil {
 			return fmt.Errorf("migrate: %w\nstmt: %s", err, s)
 		}
 	}
-	return nil
+	return tx.Commit()
 }

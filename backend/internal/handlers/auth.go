@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,8 +13,8 @@ import (
 )
 
 type registerReq struct {
-	Email    string `json:"email" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 func Register(db *sql.DB) gin.HandlerFunc {
@@ -31,10 +32,18 @@ func Register(db *sql.DB) gin.HandlerFunc {
 		id := uuid.NewString()
 		_, err = db.Exec(`INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)`, id, req.Email, string(hash))
 		if err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "email exists"})
+			if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
+				c.JSON(http.StatusConflict, gin.H{"error": "email exists"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+			}
 			return
 		}
-		token, _ := middleware.GenerateToken(id, req.Email)
+		token, err := middleware.GenerateToken(id, req.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			return
+		}
 		c.JSON(http.StatusCreated, gin.H{"token": token, "user_id": id})
 	}
 }
@@ -56,7 +65,11 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
-		token, _ := middleware.GenerateToken(id, req.Email)
+		token, err := middleware.GenerateToken(id, req.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"token": token, "user_id": id})
 	}
 }

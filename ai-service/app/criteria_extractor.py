@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
 from typing import Any
+
+logger = logging.getLogger("tendersense-ai")
 
 
 def _fallback_criteria(text: str) -> list[dict[str, Any]]:
@@ -119,38 +122,63 @@ def _fallback_criteria(text: str) -> list[dict[str, Any]]:
 def extract_criteria_llm(text: str) -> list[dict[str, Any]]:
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
+        logger.warning("No Anthropic API key found, using fallback heuristics.")
         return _fallback_criteria(text)
 
-    import anthropic
+    try:
+        import anthropic
+    except ImportError:
+        logger.warning("anthropic package not installed, using fallback heuristics.")
+        return _fallback_criteria(text)
 
     client = anthropic.Anthropic(api_key=key)
-    prompt = f"""You are extracting procurement eligibility criteria from tender text.
-Return a JSON object with key "criteria" whose value is an array of objects with fields:
-id (string), text_raw, field (snake_case identifier), operator (one of >=, <=, ==, !=),
-value (number), unit (INR|bool|count|years|percent), mandatory (boolean),
-source_priority (array of doc type strings), depends_on (null or string),
-semantic_ambiguity_score (0-1), extraction_confidence (0-1), temporal (object or null).
+    # limit input to avoid token overflow
+    content = text[:150000]
 
-Tender text:
----
-{text[:120000]}
----
+    prompt = f"""You are a specialist in public procurement. Extract all eligibility criteria (technical, financial, legal) from the tender document below.
+Return ONLY a JSON object with this structure:
+{{
+  "criteria": [
+    {{
+      "id": "unique_id",
+      "text_raw": "exact snippet from text",
+      "field": "snake_case_identifier",
+      "operator": ">=|<=|==|!=",
+      "value": number (use 1 for bool),
+      "unit": "INR|bool|count|percent",
+      "mandatory": true,
+      "source_priority": ["doc_type1", "doc_type2"],
+      "semantic_ambiguity_score": 0.0-1.0
+    }}
+  ]
+}}
+
+TENDER TEXT:
+{content}
 """
-    msg = client.messages.create(
-        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    block = msg.content[0]
-    raw = block.text if hasattr(block, "text") else str(block)
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start < 0 or end < 0:
-        return _fallback_criteria(text)
     try:
-        data = json.loads(raw[start : end + 1])
-        return data.get("criteria") or _fallback_criteria(text)
-    except json.JSONDecodeError:
+        msg = client.messages.create(
+            model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
+            max_tokens=4096,
+            temperature=0,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text
+        
+        # Robust JSON search
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not match:
+            logger.error("No JSON structure found in LLM response.")
+            return _fallback_criteria(text)
+        
+        data = json.loads(match.group(0))
+        criteria = data.get("criteria", [])
+        if not criteria:
+            return _fallback_criteria(text)
+        return criteria
+        
+    except Exception as e:
+        logger.exception(f"LLM criteria extraction failed: {str(e)}")
         return _fallback_criteria(text)
 
 

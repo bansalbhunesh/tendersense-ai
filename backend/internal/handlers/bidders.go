@@ -85,21 +85,26 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		docID := uuid.NewString()
 		name := fh.Filename
 		dest := filepath.Join("data/uploads", docID+"_"+name)
-		if err := c.SaveUploadedFile(fh, dest); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
 		dt := c.PostForm("doc_type")
 		if dt == "" {
 			dt = "supporting"
 		}
 		uid := c.GetString("user_id")
+
+		// Insert DB record FIRST — prevents orphan files if DB fails
 		_, err = db.Exec(`INSERT INTO documents (id, owner_type, owner_id, filename, storage_key, doc_type) VALUES ($1,'bidder',$2,$3,$4,$5)`,
 			docID, bidderID, name, dest, dt)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		if err := c.SaveUploadedFile(fh, dest); err != nil {
+			db.Exec(`DELETE FROM documents WHERE id=$1`, docID)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		var ocrRes struct {
 			Text    string  `json:"text"`
 			Quality float64 `json:"quality_score"`

@@ -9,6 +9,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
+)
+
+var (
+	aiClient = &http.Client{
+		Timeout: 120 * time.Second, // Long timeout for LLM processing
+	}
 )
 
 func AIServiceURL() string {
@@ -22,30 +29,39 @@ func AIServiceURL() string {
 func PostJSON(path string, body any, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal body: %w", err)
 	}
+
 	req, err := http.NewRequest(http.MethodPost, AIServiceURL()+path, bytes.NewReader(b))
 	if err != nil {
-		return err
+		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+
+	resp, err := aiClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("call ai service: %w", err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("ai service %s: %s", resp.Status, string(data))
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ai service error (status %d): %s", resp.StatusCode, string(data))
 	}
+
 	if out != nil {
-		return json.Unmarshal(data, out)
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
 	}
 	return nil
 }
 
 func ChecksumJSON(v any) string {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "error-checksum"
+	}
 	h := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(h[:])
 }

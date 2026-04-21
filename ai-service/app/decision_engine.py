@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -235,126 +236,182 @@ def select_best_evidence(evs: list[Evidence], priority: list[str]) -> Evidence |
     return scored[0][1]
 
 
-def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
-    evs = gather_evidence(criterion, bidder_id, documents)
-    cross_doc_validate(evs)
+def _get_anthropic_client():
+    """Lazy-load the anthropic client. Returns None if not available."""
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    try:
+        import anthropic
+        return anthropic.Anthropic(api_key=key)
+    except ImportError:
+        return None
 
+
+def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Use Claude to evaluate a criterion when deterministic logic is insufficient."""
+    client = _get_anthropic_client()
+    if client is None:
+        return {
+            "verdict": "NEEDS_REVIEW",
+            "reason": "NO_API_KEY",
+            "confidence": 0.0,
+            "reasoning": "Anthropic API key missing or anthropic package not installed.",
+        }
+
+    context_text = ""
+    for d in documents:
+        ocr = d.get("ocr") or {}
+        text = ocr.get("text") if isinstance(ocr, dict) else ""
+        if text:
+            context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:50000]}\n"
+
+    prompt = f"""You are a procurement expert evaluating a bidder's eligibility.
+Criterion to verify:
+Field: {criterion.get('field')}
+Text: {criterion.get('text_raw')}
+Requirement: {criterion.get('operator')} {criterion.get('value')} {criterion.get('unit')}
+
+Evidence Documents:
+{context_text}
+
+Return ONLY a JSON object:
+{{
+  "verdict": "ELIGIBLE" or "NOT_ELIGIBLE" or "NEEDS_REVIEW",
+  "reason": "short_label",
+  "confidence": float_0_to_1,
+  "reasoning": "one sentence",
+  "evidence_snapshot": {{ "document": "filename", "extracted_value": "snippet" }}
+}}
+"""
+    try:
+        msg = client.messages.create(
+            model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
+            max_tokens=1024,
+            temperature=0,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"verdict": "NEEDS_REVIEW", "reason": "PARSE_ERROR", "confidence": 0.0,
+                "reasoning": "Could not parse LLM response."}
+    except Exception as e:
+        return {"verdict": "NEEDS_REVIEW", "reason": "LLM_FAILURE", "confidence": 0.0,
+                "reasoning": f"LLM evaluation failed: {e!s}"}
+
+
+def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evaluate a single criterion for a single bidder. Uses deterministic regex for known fields,
+    falls back to LLM for unknown fields."""
+    field_name = str(criterion.get("field", ""))
     crit_id = str(criterion.get("id", ""))
     priority = list(criterion.get("source_priority") or ["supporting"])
     sem_amb = float(criterion.get("semantic_ambiguity_score") or 0)
 
-    if not evs:
+    KNOWN_FIELDS = ("annual_turnover", "gst_registration", "iso_9001", "generic_compliance", "similar_projects_count")
+
+    if field_name in KNOWN_FIELDS:
+        evs = gather_evidence(criterion, bidder_id, documents)
+        cross_doc_validate(evs)
+
+        if not evs:
+            return {
+                "criterion_id": crit_id, "bidder_id": bidder_id,
+                "verdict": "NEEDS_REVIEW", "reason": "NO_EVIDENCE",
+                "confidence": 0.0, "evidence_used": [], "evidence_conflicting": [],
+                "reviewer_required": True,
+                "reasoning": "No evidence extracted for this criterion.",
+                "ambiguity": {"extraction": 1.0, "semantic": sem_amb, "conflict": 0.0},
+            }
+
+        if any(e.conflicts_with for e in evs):
+            ids = [e.id for e in evs]
+            return {
+                "criterion_id": crit_id, "bidder_id": bidder_id,
+                "verdict": "NEEDS_REVIEW", "reason": "CONFLICT_DETECTED",
+                "confidence": 0.51, "evidence_used": ids[:1], "evidence_conflicting": ids,
+                "reviewer_required": True,
+                "reasoning": "Conflicting values detected across documents.",
+                "ambiguity": {"extraction": 0.0, "semantic": sem_amb, "conflict": 1.0},
+            }
+
+        best = select_best_evidence(evs, priority)
+        if best is None:
+            return {"criterion_id": crit_id, "bidder_id": bidder_id,
+                    "verdict": "NEEDS_REVIEW", "reason": "NO_BEST_EVIDENCE", "confidence": 0.0}
+
+        spi = source_priority_index(best.doc_type, priority)
+        cp = 1.0 if best.conflicts_with else 0.0
+        conf = overall_confidence(best.ocr_confidence, best.extraction_confidence, spi, cp)
+
+        if best.ocr_confidence < 0.8:
+            return {
+                "criterion_id": crit_id, "bidder_id": bidder_id,
+                "verdict": "NEEDS_REVIEW", "reason": "LOW_OCR_CONFIDENCE",
+                "confidence": best.ocr_confidence, "evidence_used": [best.id],
+                "reviewer_required": True,
+                "reasoning": "OCR confidence below threshold.",
+                "ambiguity": {"extraction": 1.0 - best.ocr_confidence, "semantic": sem_amb, "conflict": 0.0},
+            }
+
+        op = str(criterion.get("operator", "=="))
+        target = float(criterion.get("value") or 0)
+        passes = eval_operator(best.normalized_value, op, target)
+
+        if conf < 0.75 or sem_amb > 0.4:
+            return {
+                "criterion_id": crit_id, "bidder_id": bidder_id,
+                "verdict": "NEEDS_REVIEW", "reason": "LOW_CONFIDENCE",
+                "confidence": conf, "evidence_used": [best.id],
+                "reviewer_required": True,
+                "reasoning": f"{op} {target}; extracted {best.normalized_value} but confidence/ambiguity requires review.",
+                "ambiguity": {"extraction": max(0, 0.9 - best.extraction_confidence), "semantic": sem_amb, "conflict": 0.0},
+            }
+
+        verdict = "ELIGIBLE" if passes else "NOT_ELIGIBLE"
         return {
-            "criterion_id": crit_id,
-            "bidder_id": bidder_id,
-            "verdict": "NEEDS_REVIEW",
-            "reason": "NO_EVIDENCE",
-            "confidence": 0.0,
-            "evidence_used": [],
-            "evidence_conflicting": [],
-            "reviewer_required": True,
-            "reasoning": "No evidence extracted for this criterion.",
-            "ambiguity": {"extraction": 1.0, "semantic": sem_amb, "conflict": 0.0},
-        }
-
-    if any(e.conflicts_with for e in evs):
-        ids = [e.id for e in evs]
-        return {
-            "criterion_id": crit_id,
-            "bidder_id": bidder_id,
-            "verdict": "NEEDS_REVIEW",
-            "reason": "CONFLICT_DETECTED",
-            "confidence": 0.51,
-            "evidence_used": ids[:1],
-            "evidence_conflicting": ids,
-            "reviewer_required": True,
-            "reasoning": "Conflicting values detected across documents for the same field.",
-            "ambiguity": {"extraction": 0.0, "semantic": sem_amb, "conflict": 1.0},
-        }
-
-    best = select_best_evidence(evs, priority)
-    assert best is not None
-
-    if best.ocr_confidence < 0.85:
-        return {
-            "criterion_id": crit_id,
-            "bidder_id": bidder_id,
-            "verdict": "NEEDS_REVIEW",
-            "reason": "LOW_OCR_CONFIDENCE",
-            "confidence": best.ocr_confidence,
-            "evidence_used": [best.id],
-            "evidence_conflicting": [],
-            "reviewer_required": True,
-            "reasoning": "OCR confidence below threshold for critical evidence.",
-            "ambiguity": {"extraction": 1.0 - best.ocr_confidence, "semantic": sem_amb, "conflict": 0.0},
-        }
-
-    spi = source_priority_index(best.doc_type, priority)
-    cp = 1.0 if best.conflicts_with else 0.0
-    conf = overall_confidence(best.ocr_confidence, best.extraction_confidence, spi, cp)
-
-    op = str(criterion.get("operator", "=="))
-    target = float(criterion.get("value") or 0)
-    passes = eval_operator(best.normalized_value, op, target)
-
-    if conf < 0.75 or sem_amb > 0.4:
-        return {
-            "criterion_id": crit_id,
-            "bidder_id": bidder_id,
-            "verdict": "NEEDS_REVIEW",
-            "reason": "LOW_CONFIDENCE",
-            "confidence": conf,
-            "evidence_used": [best.id],
-            "evidence_conflicting": [],
-            "reviewer_required": True,
-            "reasoning": f"Operator {op} against {target}; extracted {best.normalized_value} but confidence or ambiguity requires review.",
-            "ambiguity": {
-                "extraction": max(0, 0.9 - best.extraction_confidence),
-                "semantic": sem_amb,
-                "conflict": 0.0,
+            "criterion_id": crit_id, "bidder_id": bidder_id,
+            "verdict": verdict, "reason": "", "confidence": conf,
+            "evidence_used": [best.id], "evidence_conflicting": [],
+            "reviewer_required": False,
+            "reasoning": f"{criterion.get('field')} requires {op} {target}. Extracted {best.normalized_value} from {best.filename}.",
+            "ambiguity": {"extraction": 0.05, "semantic": sem_amb, "conflict": 0.0},
+            "evidence_snapshot": {
+                "document": best.filename, "page": best.page,
+                "bounding_box": best.bounding_box,
+                "extracted_value": best.raw_text[:200],
+                "normalized_value": best.normalized_value,
+                "ocr_confidence": best.ocr_confidence,
             },
         }
 
-    verdict = "ELIGIBLE" if passes else "NOT_ELIGIBLE"
-    return {
-        "criterion_id": crit_id,
-        "bidder_id": bidder_id,
-        "verdict": verdict,
-        "reason": "",
-        "confidence": conf,
-        "evidence_used": [best.id],
-        "evidence_conflicting": [],
-        "reviewer_required": False,
-        "reasoning": f"Criterion {criterion.get('field')} requires {op} {target}. Extracted {best.normalized_value} from {best.filename}.",
-        "ambiguity": {"extraction": 0.05, "semantic": sem_amb, "conflict": 0.0},
-        "evidence_snapshot": {
-            "document": best.filename,
-            "page": best.page,
-            "bounding_box": best.bounding_box,
-            "extracted_value": best.raw_text[:200],
-            "normalized_value": best.normalized_value,
-            "ocr_confidence": best.ocr_confidence,
-        },
-    }
+    # Unknown fields: fall back to LLM
+    res = call_llm_eval(criterion, bidder_id, documents)
+    res["criterion_id"] = crit_id
+    res["bidder_id"] = bidder_id
+    return res
 
 
 def build_graph(
     tender_id: str, criteria: list[dict[str, Any]], decisions: list[dict[str, Any]]
 ) -> dict[str, Any]:
+    """Build a provenance graph linking criteria nodes to verdict nodes."""
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     for c in criteria:
-        cid = str(c.get("id"))
-        nodes.append({"id": f"c-{cid}", "type": "criterion", "label": c.get("text_raw", cid)[:80]})
+        cid = str(c.get("id", ""))
+        nodes.append({"id": f"c-{cid}", "type": "criterion", "label": str(c.get("text_raw", cid))[:80]})
     for d in decisions:
-        bid = str(d.get("bidder_id"))
-        cid = str(d.get("criterion_id"))
+        bid = str(d.get("bidder_id", ""))
+        cid = str(d.get("criterion_id", ""))
         nid = f"v-{bid}-{cid}"
         nodes.append(
             {
                 "id": nid,
                 "type": "verdict",
-                "label": str(d.get("verdict")),
+                "label": str(d.get("verdict", "UNKNOWN")),
                 "bidder_id": bid,
                 "confidence": d.get("confidence"),
             }
@@ -363,37 +420,10 @@ def build_graph(
     return {"tender_id": tender_id, "nodes": nodes, "edges": edges}
 
 
-def decision_checksum(payload: dict[str, Any]) -> str:
-    body = json.dumps(payload, sort_keys=True).encode()
-    return "sha256:" + hashlib.sha256(body).hexdigest()
-
-
-def flatten_decision_record(
-    tender_id: str, d: dict[str, Any], evidence: dict[str, Any] | None
-) -> dict[str, Any]:
-    rid = f"dec_{tender_id}_{d.get('bidder_id')}_{d.get('criterion_id')}"
-    chain = []
-    if evidence:
-        chain.append(evidence)
-    rec = {
-        "decision_id": rid,
-        "tender_id": tender_id,
-        "bidder_id": d.get("bidder_id"),
-        "criterion_id": d.get("criterion_id"),
-        "verdict": d.get("verdict"),
-        "confidence": d.get("confidence"),
-        "evidence_chain": chain,
-        "reasoning": d.get("reasoning"),
-        "reviewer_override": None,
-    }
-    rec["checksum"] = decision_checksum({k: v for k, v in rec.items() if k != "checksum"})
-    return rec
-
-
 def run_evaluation(payload: dict[str, Any]) -> dict[str, Any]:
     tender_id = str(payload.get("tender_id", ""))
-    criteria: list[dict[str, Any]] = list(payload.get("criteria") or [])
-    bidders: list[dict[str, Any]] = list(payload.get("bidders") or [])
+    criteria = list(payload.get("criteria") or [])
+    bidders = list(payload.get("bidders") or [])
 
     decisions: list[dict[str, Any]] = []
     review_items: list[dict[str, Any]] = []
@@ -405,15 +435,11 @@ def run_evaluation(payload: dict[str, Any]) -> dict[str, Any]:
             d = evaluate_criterion(crit, bid, docs)
             d["tender_id"] = tender_id
             if d.get("verdict") == "NEEDS_REVIEW":
-                review_items.append(
-                    {
-                        "tender_id": tender_id,
-                        "bidder_id": bid,
-                        "criterion_id": d.get("criterion_id"),
-                        "reason": d.get("reason"),
-                        "confidence": d.get("confidence"),
-                    }
-                )
+                review_items.append({
+                    "tender_id": tender_id, "bidder_id": bid,
+                    "criterion_id": d.get("criterion_id"),
+                    "reason": d.get("reason"), "confidence": d.get("confidence"),
+                })
             decisions.append(d)
 
     graph = build_graph(tender_id, criteria, decisions)

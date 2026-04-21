@@ -10,7 +10,13 @@ import (
 
 func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rows, err := db.Query(`SELECT id, tender_id, bidder_id, criterion_id, payload, created_at FROM review_queue WHERE status='open' ORDER BY created_at`)
+		uid := c.GetString("user_id")
+		rows, err := db.Query(`
+			SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at 
+			FROM review_queue rq
+			JOIN tenders t ON rq.tender_id = t.id
+			WHERE rq.status='open' AND t.owner_id=$1
+			ORDER BY rq.created_at`, uid)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -69,10 +75,16 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 		m["override_by"] = uid
 		newB, _ := json.Marshal(m)
 		sum := ChecksumJSON(json.RawMessage(newB))
-		db.Exec(`UPDATE decisions SET payload=$4::jsonb, checksum=$5 WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
-			req.TenderID, req.BidderID, req.CriterionID, string(newB), sum)
-		db.Exec(`UPDATE review_queue SET status='resolved' WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
-			req.TenderID, req.BidderID, req.CriterionID)
+		if _, err := db.Exec(`UPDATE decisions SET payload=$4::jsonb, checksum=$5 WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
+			req.TenderID, req.BidderID, req.CriterionID, string(newB), sum); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update decision"})
+			return
+		}
+		if _, err := db.Exec(`UPDATE review_queue SET status='resolved' WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
+			req.TenderID, req.BidderID, req.CriterionID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve review item"})
+			return
+		}
 
 		audit := map[string]any{
 			"tender_id": req.TenderID, "bidder_id": req.BidderID, "criterion_id": req.CriterionID,
