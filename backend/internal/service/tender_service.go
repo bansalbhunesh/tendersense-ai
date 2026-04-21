@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
 	"github.com/google/uuid"
+
 	"github.com/tendersense/backend/internal/repository"
 	"github.com/tendersense/backend/internal/util"
 )
@@ -19,9 +21,10 @@ type tenderService struct {
 }
 
 type EvaluationResult struct {
-	ID        string         `json:"evaluation_id"`
-	Decisions int            `json:"decisions_count"`
-	Graph     map[string]any `json:"graph"`
+	ID             string         `json:"evaluation_id"`
+	Decisions      int            `json:"decisions"`
+	DecisionsCount int            `json:"decisions_count"`
+	Graph          map[string]any `json:"graph"`
 }
 
 type AIOutput struct {
@@ -113,9 +116,11 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		return nil, fmt.Errorf("db transaction: %w", err)
 	}
 
+	n := len(aiOut.Decisions)
 	return &EvaluationResult{
-		ID:        eid,
-		Decisions: len(aiOut.Decisions),
-		Graph:     aiOut.Graph,
+		ID:             eid,
+		Decisions:      n,
+		DecisionsCount: n,
+		Graph:          aiOut.Graph,
 	}, nil
 }

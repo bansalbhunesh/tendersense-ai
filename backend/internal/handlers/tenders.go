@@ -118,14 +118,15 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file required"})
 			return
 		}
-		_ = os.MkdirAll("data/uploads", 0o755)
+		root := UploadDataDir()
+		_ = os.MkdirAll(root, 0o755)
 		docID := uuid.NewString()
 		name, ok := safeUploadFilename(fh.Filename)
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff"})
 			return
 		}
-		dest := filepath.Join("data/uploads", docID+"_"+name)
+		dest := filepath.Join(root, docID+"_"+name)
 		uid := c.GetString("user_id")
 
 		// Insert DB record FIRST — if file save fails we can clean up, but we

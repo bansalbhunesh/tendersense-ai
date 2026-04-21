@@ -3,11 +3,25 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
+
+// UploadDataDir returns an absolute upload root (DATA_DIR or default data/uploads).
+func UploadDataDir() string {
+	d := strings.TrimSpace(os.Getenv("DATA_DIR"))
+	if d == "" {
+		d = "data/uploads"
+	}
+	abs, err := filepath.Abs(d)
+	if err != nil {
+		return filepath.Clean(d)
+	}
+	return abs
+}
 
 var allowedUploadExts = map[string]struct{}{
 	".pdf": {}, ".png": {}, ".jpg": {}, ".jpeg": {}, ".tif": {}, ".tiff": {},
@@ -15,19 +29,19 @@ var allowedUploadExts = map[string]struct{}{
 
 // Allowed bidder document types (must align with UI + decision_engine source_priority).
 var allowedBidderDocTypes = map[string]struct{}{
-	"supporting":              {},
-	"ca_certificate":          {},
-	"gst_certificate":         {},
-	"audited_balance_sheet":   {},
-	"itr":                     {},
-	"iso_certificate":         {},
-	"experience_letters":      {},
-	"experience_letter":       {},
-	"work_order":              {},
-	"bank_statement":          {},
-	"balance_sheet":           {},
-	"similar_projects":        {},
-	"technical_brochure":      {},
+	"supporting":            {},
+	"ca_certificate":        {},
+	"gst_certificate":       {},
+	"audited_balance_sheet": {},
+	"itr":                   {},
+	"iso_certificate":       {},
+	"experience_letters":    {},
+	"experience_letter":     {},
+	"work_order":            {},
+	"bank_statement":        {},
+	"balance_sheet":         {},
+	"similar_projects":      {},
+	"technical_brochure":    {},
 }
 
 // NormalizeBidderDocType returns a canonical doc_type for storage, or ("", false) if unknown.

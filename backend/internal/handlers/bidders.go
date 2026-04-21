@@ -101,14 +101,15 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file required"})
 			return
 		}
-		_ = os.MkdirAll("data/uploads", 0o755)
+		root := UploadDataDir()
+		_ = os.MkdirAll(root, 0o755)
 		docID := uuid.NewString()
 		name, okName := safeUploadFilename(fh.Filename)
 		if !okName {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff"})
 			return
 		}
-		dest := filepath.Join("data/uploads", docID+"_"+name)
+		dest := filepath.Join(root, docID+"_"+name)
 		dt, okDT := NormalizeBidderDocType(c.PostForm("doc_type"))
 		if !okDT {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid doc_type"})

@@ -3,7 +3,14 @@ import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import ReasoningGraph from "../components/ReasoningGraph";
 
-type Decision = Record<string, unknown>;
+type Decision = Record<string, unknown> & {
+  verdict?: string;
+  criterion_id?: string;
+  reasoning?: string;
+  reason?: string;
+  confidence?: number;
+  evidence_snapshot?: { document?: string; evidence_quote?: string; extracted_value?: string };
+};
 
 export default function TenderWorkspace() {
   const { id } = useParams();
@@ -110,7 +117,25 @@ export default function TenderWorkspace() {
     }
   }
 
+  const bidderNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of bidders) m.set(b.id, b.name);
+    return m;
+  }, [bidders]);
+
+  const criteriaList = useMemo(() => (tender?.criteria as unknown[]) || [], [tender]);
+
   async function runEval() {
+    if (criteriaList.length === 0) {
+      setMsg("Upload a tender document so criteria can be extracted before you run evaluation.");
+      setTab("docs");
+      return;
+    }
+    if (bidders.length === 0) {
+      setMsg("Register at least one bidder before running evaluation.");
+      setTab("bidders");
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -137,8 +162,6 @@ export default function TenderWorkspace() {
     }
     return Array.from(map.entries());
   }, [results]);
-
-  const criteriaList = (tender?.criteria as unknown[]) || [];
 
   return (
     <div className="shell">
@@ -244,8 +267,11 @@ export default function TenderWorkspace() {
             Runs cross-document validation, confidence-weighted operator checks, and builds the reasoning graph.
             NEEDS_REVIEW never silently disqualifies — it routes to the officer queue.
           </p>
+          <p className="muted" style={{ marginTop: 8 }}>
+            Criteria loaded: {criteriaList.length} · Bidders: {bidders.length}
+          </p>
           <button className="primary" disabled={busy} onClick={runEval}>
-            Run decision engine
+            {busy ? "Running…" : "Run decision engine"}
           </button>
         </div>
       )}
@@ -266,9 +292,15 @@ export default function TenderWorkspace() {
                   const vals = Object.values(byC);
                   const eligible = vals.filter((v) => v.verdict === "ELIGIBLE").length;
                   const review = vals.filter((v) => v.verdict === "NEEDS_REVIEW").length;
+                  const bidderLabel = bidderNameMap.get(bid) || `${bid.slice(0, 8)}…`;
                   return (
                     <tr key={bid}>
-                      <td className="mono">{bid.slice(0, 8)}…</td>
+                      <td title={bid}>
+                        <span style={{ fontWeight: 600 }}>{bidderLabel}</span>
+                        <div className="mono muted" style={{ fontSize: "0.75rem" }}>
+                          {bid.slice(0, 8)}…
+                        </div>
+                      </td>
                       <td>
                         {eligible} eligible · {review} need review · {vals.length} criteria
                       </td>
@@ -279,7 +311,7 @@ export default function TenderWorkspace() {
             </table>
             <h3 style={{ marginTop: 16 }}>Criterion-level detail</h3>
             {results?.decisions?.map((d, idx) => {
-              const dd = d as any;
+              const dd = d as Decision;
               const v = String(dd.verdict || "");
               const cls = v === "ELIGIBLE" ? "ok" : v === "NOT_ELIGIBLE" ? "bad" : "review";
               return (
@@ -288,7 +320,7 @@ export default function TenderWorkspace() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className="mono" style={{ fontSize: '0.75rem', opacity: 0.7 }}>Criterion: {String(dd.criterion_id).slice(0, 8)}…</span>
                     </div>
-                    <span className={`badge ${cls}`}>{v.replace('_', ' ')}</span>
+                    <span className={`badge ${cls}`}>{v.replace(/_/g, " ")}</span>
                   </div>
                   
                   <div style={{ marginBottom: 12 }}>

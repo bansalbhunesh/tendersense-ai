@@ -4,15 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+
+	"github.com/google/uuid"
 )
 
 type TenderRepository interface {
 	GetCriteria(ctx context.Context, tenderID string) ([]map[string]any, error)
 	GetBidderIDs(ctx context.Context, tenderID string) ([]string, error)
 	GetBidderDocuments(ctx context.Context, bidderID string) ([]map[string]any, error)
-	
+
 	WithTransaction(ctx context.Context, fn func(*sql.Tx) error) error
-	
+
 	ClearTenderResults(ctx context.Context, tx *sql.Tx, tenderID string) error
 	SaveDecision(ctx context.Context, tx *sql.Tx, d map[string]any, tenderID, checksum string) error
 	SaveEvaluation(ctx context.Context, tx *sql.Tx, id, tenderID, status, graph string) error
@@ -123,12 +125,13 @@ func (r *sqlTenderRepository) ClearTenderResults(ctx context.Context, tx *sql.Tx
 func (r *sqlTenderRepository) SaveDecision(ctx context.Context, tx *sql.Tx, d map[string]any, tenderID, checksum string) error {
 	id, _ := d["id"].(string)
 	if id == "" {
-		// handle uuid in service ideally, but fallback for safety
+		id = uuid.NewString()
+		d["id"] = id
 	}
 	bid, _ := d["bidder_id"].(string)
 	crid, _ := d["criterion_id"].(string)
 	payload, _ := json.Marshal(d)
-	
+
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO decisions (id, tender_id, bidder_id, criterion_id, payload, checksum) VALUES ($1,$2,$3::uuid,$4,$5::jsonb,$6)`,
 		id, tenderID, bid, crid, string(payload), checksum)
@@ -146,7 +149,7 @@ func (r *sqlTenderRepository) SaveReviewItem(ctx context.Context, tx *sql.Tx, id
 	p, _ := json.Marshal(payload)
 	bid, _ := payload["bidder_id"].(string)
 	crid, _ := payload["criterion_id"].(string)
-	
+
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO review_queue (id, tender_id, bidder_id, criterion_id, status, payload) VALUES ($1,$2::uuid,$3::uuid,$4,'open',$5::jsonb)`,
 		id, tenderID, bid, crid, string(p))

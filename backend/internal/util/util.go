@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,18 @@ var (
 	}
 )
 
+const postJSONMaxAttempts = 3
+
+// HTTPStatusError is returned for AI HTTP 4xx responses (no retry).
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("ai service error (status %d): %s", e.StatusCode, e.Body)
+}
+
 func AIServiceURL() string {
 	u := os.Getenv("AI_SERVICE_URL")
 	if u == "" {
@@ -31,6 +44,31 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	var lastErr error
+	for attempt := 1; attempt <= postJSONMaxAttempts; attempt++ {
+		err := postJSONOnce(ctx, path, body, out)
+		if err == nil {
+			return nil
+		}
+		var hs *HTTPStatusError
+		if errors.As(err, &hs) {
+			return err
+		}
+		lastErr = err
+		if attempt >= postJSONMaxAttempts {
+			break
+		}
+		backoff := time.Duration(attempt) * 300 * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+	}
+	return lastErr
+}
+
+func postJSONOnce(ctx context.Context, path string, body any, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal body: %w", err)
@@ -48,13 +86,16 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 	}
 	defer resp.Body.Close()
 
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return &HTTPStatusError{StatusCode: resp.StatusCode, Body: string(data)}
+		}
 		return fmt.Errorf("ai service error (status %d): %s", resp.StatusCode, string(data))
 	}
 
 	if out != nil {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		if err := json.Unmarshal(data, out); err != nil {
 			return fmt.Errorf("decode response: %w", err)
 		}
 	}

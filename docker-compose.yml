@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   db:
     image: postgres:15-alpine
     environment:
@@ -23,6 +33,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
       - DATA_DIR=/app/data/uploads
+      - REDIS_URL=redis://redis:6379/0
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
       interval: 10s
@@ -30,6 +41,9 @@ services:
       retries: 3
     volumes:
       - uploads:/app/data/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
 
   backend:
     build: ./backend
@@ -41,6 +55,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8080
+      - DATA_DIR=/app/data/uploads
     depends_on:
       db:
         condition: service_healthy
