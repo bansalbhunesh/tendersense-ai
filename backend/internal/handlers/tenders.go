@@ -12,8 +12,8 @@ import (
 )
 
 type tenderCreate struct {
-	Title       string `json:"title" binding:"required"`
-	Description string `json:"description"`
+	Title       string `json:"title" binding:"required,min=3,max=256"`
+	Description string `json:"description" binding:"max=8000"`
 }
 
 func CreateTender(db *sql.DB) gin.HandlerFunc {
@@ -45,12 +45,18 @@ func ListTenders(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		defer rows.Close()
-		var out []map[string]any
+		out := make([]map[string]any, 0)
 		for rows.Next() {
 			var id, title, status string
 			var created interface{}
-			rows.Scan(&id, &title, &status, &created)
+			if err := rows.Scan(&id, &title, &status, &created); err != nil {
+				continue
+			}
 			out = append(out, map[string]any{"id": id, "title": title, "status": status, "created_at": created})
+		}
+		if err := rows.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"tenders": out})
 	}
@@ -59,6 +65,9 @@ func ListTenders(db *sql.DB) gin.HandlerFunc {
 func GetTender(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+		if !RequireTenderOwner(db, c, id) {
+			return
+		}
 		var title, desc, status string
 		var created interface{}
 		err := db.QueryRow(`SELECT title, description, status, created_at FROM tenders WHERE id=$1`, id).Scan(&title, &desc, &status, &created)
@@ -70,20 +79,25 @@ func GetTender(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		rows, _ := db.Query(`SELECT id, payload FROM criteria WHERE tender_id=$1`, id)
-		var criteria []json.RawMessage
-		if rows != nil {
+		rows, err := db.Query(`SELECT id, payload FROM criteria WHERE tender_id=$1`, id)
+		criteria := make([]json.RawMessage, 0)
+		if err == nil && rows != nil {
 			defer rows.Close()
 			for rows.Next() {
 				var cid string
 				var payload []byte
-				rows.Scan(&cid, &payload)
+				if err := rows.Scan(&cid, &payload); err != nil {
+					continue
+				}
 				var m map[string]any
-				json.Unmarshal(payload, &m)
+				if err := json.Unmarshal(payload, &m); err != nil {
+					continue
+				}
 				m["id"] = cid
 				b, _ := json.Marshal(m)
 				criteria = append(criteria, b)
 			}
+			_ = rows.Err()
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"id": id, "title": title, "description": desc, "status": status, "created_at": created,
@@ -95,6 +109,9 @@ func GetTender(db *sql.DB) gin.HandlerFunc {
 func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		fh, err := c.FormFile("file")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file required"})
@@ -102,7 +119,11 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		}
 		_ = os.MkdirAll("data/uploads", 0o755)
 		docID := uuid.NewString()
-		name := fh.Filename
+		name, ok := safeUploadFilename(fh.Filename)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff"})
+			return
+		}
 		dest := filepath.Join("data/uploads", docID+"_"+name)
 		uid := c.GetString("user_id")
 
@@ -128,7 +149,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Pages   []any   `json:"pages"`
 			Engine  string  `json:"engine"`
 		}
-		_ = PostJSON("/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
+		_ = PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
 
@@ -138,7 +159,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Criteria []map[string]any `json:"criteria"`
 		}{}
 		if ocrRes.Text != "" {
-			_ = PostJSON("/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
+			_ = PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
 			for _, cr := range extRes.Criteria {
 				if cr["id"] == nil || cr["id"] == "" {
 					cr["id"] = uuid.NewString()

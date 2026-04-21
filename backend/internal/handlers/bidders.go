@@ -12,12 +12,15 @@ import (
 )
 
 type bidderCreate struct {
-	Name string `json:"name" binding:"required"`
+	Name string `json:"name" binding:"required,min=1,max=512"`
 }
 
 func RegisterBidder(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		var req bidderCreate
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -38,18 +41,27 @@ func RegisterBidder(db *sql.DB) gin.HandlerFunc {
 func ListBidders(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		rows, err := db.Query(`SELECT id, name, created_at FROM bidders WHERE tender_id=$1 ORDER BY created_at`, tenderID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		defer rows.Close()
-		var out []map[string]any
+		out := make([]map[string]any, 0)
 		for rows.Next() {
 			var id, name string
 			var created interface{}
-			rows.Scan(&id, &name, &created)
+			if err := rows.Scan(&id, &name, &created); err != nil {
+				continue
+			}
 			out = append(out, map[string]any{"id": id, "name": name, "created_at": created})
+		}
+		if err := rows.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"bidders": out})
 	}
@@ -57,11 +69,19 @@ func ListBidders(db *sql.DB) gin.HandlerFunc {
 
 func GetBidder(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.Param("id")
-		var name, tenderID string
-		err := db.QueryRow(`SELECT name, tender_id FROM bidders WHERE id=$1`, id).Scan(&name, &tenderID)
+		id := c.Param("bid")
+		tenderID, ok := RequireBidderForOwner(db, c, id)
+		if !ok {
+			return
+		}
+		var name string
+		err := db.QueryRow(`SELECT name FROM bidders WHERE id=$1`, id).Scan(&name)
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"id": id, "name": name, "tender_id": tenderID})
@@ -71,9 +91,8 @@ func GetBidder(db *sql.DB) gin.HandlerFunc {
 func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		bidderID := c.Param("id")
-		var tenderID string
-		if err := db.QueryRow(`SELECT tender_id FROM bidders WHERE id=$1`, bidderID).Scan(&tenderID); err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "bidder not found"})
+		tenderID, ok := RequireBidderForOwner(db, c, bidderID)
+		if !ok {
 			return
 		}
 		fh, err := c.FormFile("file")
@@ -83,11 +102,16 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		}
 		_ = os.MkdirAll("data/uploads", 0o755)
 		docID := uuid.NewString()
-		name := fh.Filename
+		name, okName := safeUploadFilename(fh.Filename)
+		if !okName {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff"})
+			return
+		}
 		dest := filepath.Join("data/uploads", docID+"_"+name)
-		dt := c.PostForm("doc_type")
-		if dt == "" {
-			dt = "supporting"
+		dt, okDT := NormalizeBidderDocType(c.PostForm("doc_type"))
+		if !okDT {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid doc_type"})
+			return
 		}
 		uid := c.GetString("user_id")
 
@@ -109,7 +133,7 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 			Text    string  `json:"text"`
 			Quality float64 `json:"quality_score"`
 		}
-		_ = PostJSON("/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
+		_ = PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
 		WriteAudit(db, uid, tenderID, "bidder.document.uploaded", map[string]any{"document_id": docID, "bidder_id": bidderID})

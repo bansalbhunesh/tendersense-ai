@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,13 +27,16 @@ func AIServiceURL() string {
 	return u
 }
 
-func PostJSON(path string, body any, out any) error {
+func PostJSON(ctx context.Context, path string, body any, out any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	b, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal body: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, AIServiceURL()+path, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, AIServiceURL()+path, bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -45,7 +49,7 @@ func PostJSON(path string, body any, out any) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // cap error body at 1 MiB
 		return fmt.Errorf("ai service error (status %d): %s", resp.StatusCode, string(data))
 	}
 

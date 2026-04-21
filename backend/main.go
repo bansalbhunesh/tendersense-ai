@@ -24,6 +24,10 @@ func main() {
 		log.Println("No .env file found, using platform environment variables")
 	}
 
+	if gin.Mode() == gin.ReleaseMode && strings.TrimSpace(os.Getenv("JWT_SECRET")) == "" {
+		log.Fatal("JWT_SECRET must be set when GIN_MODE=release")
+	}
+
 	database, err := db.Connect()
 	if err != nil {
 		log.Fatalf("Critical Error: Database connection failed: %v", err)
@@ -54,8 +58,12 @@ func main() {
 
 	api := r.Group("/api/v1")
 	{
-		api.POST("/auth/register", handlers.Register(database))
-		api.POST("/auth/login", handlers.Login(database))
+		authLimited := api.Group("")
+		authLimited.Use(middleware.AuthRouteLimiter(40, 15))
+		{
+			authLimited.POST("/auth/register", handlers.Register(database))
+			authLimited.POST("/auth/login", handlers.Login(database))
+		}
 
 		auth := api.Group("")
 		auth.Use(middleware.AuthRequired())

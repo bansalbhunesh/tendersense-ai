@@ -13,6 +13,9 @@ import (
 func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		uid, _ := c.Get("user_id")
 		userID, _ := uid.(string)
 
@@ -55,7 +58,9 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 		var bidderIDs []string
 		for brows.Next() {
 			var id string
-			brows.Scan(&id)
+			if err := brows.Scan(&id); err != nil {
+				continue
+			}
 			bidderIDs = append(bidderIDs, id)
 		}
 		if err := brows.Err(); err != nil {
@@ -76,19 +81,22 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 			if err != nil {
 				continue
 			}
-			var docs []map[string]any
+			docs := make([]map[string]any, 0)
 			for drows.Next() {
 				var id, fname, dtype string
 				var ocrRaw []byte
-				drows.Scan(&id, &fname, &dtype, &ocrRaw)
+				if err := drows.Scan(&id, &fname, &dtype, &ocrRaw); err != nil {
+					continue
+				}
 				var ocr map[string]any
 				if len(ocrRaw) > 0 {
-					json.Unmarshal(ocrRaw, &ocr)
+					_ = json.Unmarshal(ocrRaw, &ocr)
 				}
 				docs = append(docs, map[string]any{
 					"id": id, "filename": fname, "doc_type": dtype, "ocr": ocr,
 				})
 			}
+			_ = drows.Err()
 			drows.Close()
 			biddersPayload = append(biddersPayload, map[string]any{"bidder_id": bid, "documents": docs})
 		}
@@ -99,7 +107,7 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 			Decisions   []map[string]any `json:"decisions"`
 			ReviewItems []map[string]any `json:"review_items"`
 		}
-		err = PostJSON("/v1/evaluate", map[string]any{
+		err = PostJSON(c.Request.Context(), "/v1/evaluate", map[string]any{
 			"tender_id": tenderID,
 			"criteria":  criteria,
 			"bidders":   biddersPayload,
@@ -183,6 +191,9 @@ func TriggerEvaluation(db *sql.DB) gin.HandlerFunc {
 func GetResults(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		var graph []byte
 		_ = db.QueryRow(`SELECT graph FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&graph)
 
@@ -192,11 +203,17 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		defer rows.Close()
-		var decisions []json.RawMessage
+		decisions := make([]json.RawMessage, 0)
 		for rows.Next() {
 			var p []byte
-			rows.Scan(&p)
+			if err := rows.Scan(&p); err != nil {
+				continue
+			}
 			decisions = append(decisions, p)
+		}
+		if err := rows.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		var g any
 		if len(graph) > 0 {
@@ -209,6 +226,9 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
 		bid := c.Param("bid")
 		rows, err := db.Query(`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2`, tenderID, bid)
 		if err != nil {
@@ -216,11 +236,17 @@ func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		defer rows.Close()
-		var out []json.RawMessage
+		out := make([]json.RawMessage, 0)
 		for rows.Next() {
 			var p []byte
-			rows.Scan(&p)
+			if err := rows.Scan(&p); err != nil {
+				continue
+			}
 			out = append(out, p)
+		}
+		if err := rows.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"bidder_id": bid, "decisions": out})
 	}

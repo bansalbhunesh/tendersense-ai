@@ -27,7 +27,7 @@ app = FastAPI(title="TenderSense AI", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
+    allow_origins=_split_origins(os.getenv("ALLOWED_ORIGINS", "*")),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,38 +35,53 @@ app.add_middleware(
 
 DATA_DIR = os.path.abspath(os.getenv("DATA_DIR", "/app/data/uploads"))
 
+_MAX_PROCESS_CHARS = int(os.getenv("MAX_PROCESS_TEXT_CHARS", "500000"))
+_MAX_CRITERIA_CHARS = int(os.getenv("MAX_CRITERIA_TEXT_CHARS", "400000"))
+_MAX_EVAL_CRITERIA = int(os.getenv("MAX_EVAL_CRITERIA", "200"))
+_MAX_EVAL_BIDDERS = int(os.getenv("MAX_EVAL_BIDDERS", "100"))
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def validate_path(path: str) -> str:
-    """Resolve path and ensure it is under DATA_DIR. Raises HTTPException on violation."""
+    """Resolve path and ensure it is under DATA_DIR (prefix-safe). Raises HTTPException on violation."""
+    data_root = os.path.realpath(DATA_DIR)
     resolved = os.path.realpath(path)
-    if not resolved.startswith(DATA_DIR):
+    try:
+        common = os.path.commonpath((data_root, resolved))
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied: invalid path")
+    if common != data_root:
         raise HTTPException(
             status_code=403,
-            detail=f"Access denied: path must be under {DATA_DIR}",
+            detail=f"Access denied: path must be under {data_root}",
         )
     return resolved
+
+
+def _split_origins(raw: str) -> list[str]:
+    parts = [x.strip() for x in raw.split(",") if x.strip()]
+    return parts if parts else ["*"]
 
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 class ProcessDocReq(BaseModel):
-    path: str
-    document_id: str = ""
+    path: str = Field(..., max_length=4096)
+    document_id: str = Field(default="", max_length=128)
 
 
 class ExtractCriteriaReq(BaseModel):
-    text: str
-    tender_id: str = ""
+    text: str = Field(default="", max_length=_MAX_CRITERIA_CHARS)
+    tender_id: str = Field(default="", max_length=128)
 
 
 class EvaluateReq(BaseModel):
-    tender_id: str
-    criteria: list[dict] = Field(default_factory=list)
-    bidders: list[dict] = Field(default_factory=list)
+    tender_id: str = Field(..., max_length=128)
+    criteria: list[dict] = Field(default_factory=list, max_length=_MAX_EVAL_CRITERIA)
+    bidders: list[dict] = Field(default_factory=list, max_length=_MAX_EVAL_BIDDERS)
 
 
 # ---------------------------------------------------------------------------

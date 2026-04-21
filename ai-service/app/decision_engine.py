@@ -66,27 +66,27 @@ def normalize_inr_from_text(text: str) -> list[tuple[float, float, str]]:
     return out
 
 
-def extract_bool_signals(text: str, field: str) -> tuple[float, float]:
+def extract_bool_signals(text: str, field_name: str) -> tuple[float, float]:
     t = text.lower()
-    if field == "gst_registration":
+    if field_name == "gst_registration":
         if re.search(r"\b\d{2}[a-z]{5}\d{4}[a-z][a-z0-9]\b", t, re.I):
             return 1.0, 0.92
         if "gst" in t and "registration" in t:
             return 1.0, 0.8
         return 0.0, 0.5
-    if field == "iso_9001":
+    if field_name == "iso_9001":
         if "iso" in t and "9001" in t:
             return 1.0, 0.85
         return 0.0, 0.6
-    if field == "generic_compliance":
+    if field_name == "generic_compliance":
         if len(t) > 80 and ("certif" in t or "undertaking" in t or "compliance" in t):
             return 1.0, 0.55
         return 0.0, 0.45
     return 0.0, 0.4
 
 
-def extract_count(text: str, field: str) -> tuple[float, float]:
-    if field != "similar_projects_count":
+def extract_count(text: str, field_name: str) -> tuple[float, float]:
+    if field_name != "similar_projects_count":
         return 0.0, 0.3
     nums = [int(x) for x in re.findall(r"(\d+)\s*(?:similar|projects?|works?)", text, re.I)]
     if nums:

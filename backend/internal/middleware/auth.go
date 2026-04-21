@@ -47,12 +47,18 @@ func AuthRequired() gin.HandlerFunc {
 		}
 		raw := strings.TrimPrefix(h, "Bearer ")
 		var claims Claims
-		_, err := jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
-			if t.Method != jwt.SigningMethodHS256 {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return JWTSecret(), nil
-		})
+		_, err := jwt.ParseWithClaims(
+			raw,
+			&claims,
+			func(t *jwt.Token) (any, error) {
+				if t.Method != jwt.SigningMethodHS256 {
+					return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+				}
+				return JWTSecret(), nil
+			},
+			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			jwt.WithExpirationRequired(),
+		)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
