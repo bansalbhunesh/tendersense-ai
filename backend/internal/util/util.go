@@ -18,6 +18,11 @@ var (
 	aiClient = &http.Client{
 		Timeout: 120 * time.Second,
 	}
+
+	// Long-running evaluate: single attempt, no stacked retries (avoids 3× LLM load on timeout).
+	evaluateClient = &http.Client{
+		Timeout: 15 * time.Minute,
+	}
 )
 
 const postJSONMaxAttempts = 3
@@ -40,13 +45,22 @@ func AIServiceURL() string {
 	return u
 }
 
+// PostEvaluateJSON calls /v1/evaluate once with a long client timeout (no retries).
+func PostEvaluateJSON(ctx context.Context, body any, out any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return doPostJSON(ctx, evaluateClient, "/v1/evaluate", body, out)
+}
+
+// PostJSON calls the AI service with bounded retries; skips retries on 4xx and on context cancel.
 func PostJSON(ctx context.Context, path string, body any, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	var lastErr error
 	for attempt := 1; attempt <= postJSONMaxAttempts; attempt++ {
-		err := postJSONOnce(ctx, path, body, out)
+		err := doPostJSON(ctx, aiClient, path, body, out)
 		if err == nil {
 			return nil
 		}
@@ -58,7 +72,7 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 		if attempt >= postJSONMaxAttempts {
 			break
 		}
-		backoff := time.Duration(attempt) * 300 * time.Millisecond
+		backoff := time.Duration(1<<uint(attempt-1)) * 400 * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -68,7 +82,7 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 	return lastErr
 }
 
-func postJSONOnce(ctx context.Context, path string, body any, out any) error {
+func doPostJSON(ctx context.Context, client *http.Client, path string, body any, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal body: %w", err)
@@ -80,7 +94,7 @@ func postJSONOnce(ctx context.Context, path string, body any, out any) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := aiClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("call ai service: %w", err)
 	}

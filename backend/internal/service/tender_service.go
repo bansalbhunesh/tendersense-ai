@@ -56,6 +56,13 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		return nil, fmt.Errorf("no bidders registered")
 	}
 
+	for i := range criteria {
+		if criteria[i] == nil {
+			continue
+		}
+		criteria[i]["id"] = fmt.Sprint(criteria[i]["id"])
+	}
+
 	biddersPayload := make([]map[string]any, 0, len(bidderIDs))
 	for _, bid := range bidderIDs {
 		docs, err := s.repo.GetBidderDocuments(ctx, bid)
@@ -68,9 +75,9 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		})
 	}
 
-	// 3. AI Service Call
+	// 3. AI Service Call (single long request — no stacked retries)
 	var aiOut AIOutput
-	err = util.PostJSON(ctx, "/v1/evaluate", map[string]any{
+	err = util.PostEvaluateJSON(ctx, map[string]any{
 		"tender_id": tenderID,
 		"criteria":  criteria,
 		"bidders":   biddersPayload,
@@ -87,8 +94,16 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 			return err
 		}
 
-		// Save decisions
+		// Save decisions (skip rows with invalid bidder UUIDs or empty criterion_id)
 		for _, d := range aiOut.Decisions {
+			bid, _ := d["bidder_id"].(string)
+			if _, perr := uuid.Parse(bid); perr != nil {
+				continue
+			}
+			crid, _ := d["criterion_id"].(string)
+			if crid == "" {
+				continue
+			}
 			payload, _ := json.Marshal(d)
 			sum := util.ChecksumJSON(json.RawMessage(payload))
 			if err := s.repo.SaveDecision(ctx, tx, d, tenderID, sum); err != nil {
@@ -102,8 +117,15 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 			return err
 		}
 
-		// Save review items
 		for _, r := range aiOut.ReviewItems {
+			bid, _ := r["bidder_id"].(string)
+			if _, perr := uuid.Parse(bid); perr != nil {
+				continue
+			}
+			crid, _ := r["criterion_id"].(string)
+			if crid == "" {
+				continue
+			}
 			rid := uuid.NewString()
 			if err := s.repo.SaveReviewItem(ctx, tx, rid, tenderID, r); err != nil {
 				return err

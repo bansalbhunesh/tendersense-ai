@@ -80,6 +80,57 @@ def _fallback_criteria(text: str) -> list[dict[str, Any]]:
             }
         )
 
+    if re.search(r"net\s*worth|positive\s*net\s*worth", t, re.I):
+        out.append(
+            {
+                "id": f"crit_{uuid.uuid4().hex[:8]}",
+                "text_raw": "Net worth / positive net worth requirement",
+                "field": "net_worth",
+                "operator": ">=",
+                "value": 1e7,
+                "unit": "INR",
+                "mandatory": True,
+                "source_priority": ["audited_balance_sheet", "ca_certificate"],
+                "depends_on": None,
+                "semantic_ambiguity_score": 0.2,
+                "extraction_confidence": 0.55,
+            }
+        )
+
+    if re.search(r"\bemd\b|earnest\s*money|bid\s*security\s*deposit", t, re.I):
+        out.append(
+            {
+                "id": f"crit_{uuid.uuid4().hex[:8]}",
+                "text_raw": "EMD / bid security",
+                "field": "emd_amount",
+                "operator": ">=",
+                "value": 0.0,
+                "unit": "INR",
+                "mandatory": True,
+                "source_priority": ["bank_statement", "supporting"],
+                "depends_on": None,
+                "semantic_ambiguity_score": 0.35,
+                "extraction_confidence": 0.5,
+            }
+        )
+
+    if re.search(r"experience|similar\s*work|past\s*performance", t, re.I):
+        out.append(
+            {
+                "id": f"crit_{uuid.uuid4().hex[:8]}",
+                "text_raw": "Relevant experience / similar contracts",
+                "field": "experience_years",
+                "operator": ">=",
+                "value": 3.0,
+                "unit": "count",
+                "mandatory": True,
+                "source_priority": ["experience_letters", "work_order", "supporting"],
+                "depends_on": None,
+                "semantic_ambiguity_score": 0.3,
+                "extraction_confidence": 0.55,
+            }
+        )
+
     pm = re.search(r"(\d+)\s*(similar )?projects?", t)
     if pm:
         n = int(pm.group(1))

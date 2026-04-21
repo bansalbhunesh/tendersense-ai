@@ -9,7 +9,10 @@ type Node = {
 type Edge = { from: string; to: string; label?: string };
 
 export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edges: Edge[] } | null }) {
-  if (!graph || !graph.nodes?.length) {
+  const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : [];
+  const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
+
+  if (!nodes.length) {
     return <p className="muted">Run an evaluation to materialize the reasoning graph.</p>;
   }
 
@@ -20,7 +23,7 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
         evidence-backed reasoning.
       </p>
       <div className="graph">
-        {graph.nodes.map((n) => (
+        {nodes.map((n) => (
           <div key={n.id} className={`graph-node ${n.type}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ fontWeight: 800, fontSize: "0.7rem", opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -41,9 +44,9 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
           </div>
         ))}
       </div>
-      {graph.edges?.length > 0 && (
+      {edges.length > 0 && (
         <div style={{ marginTop: 14 }} className="mono muted">
-          {graph.edges.slice(0, 40).map((e, i) => (
+          {edges.slice(0, 40).map((e, i) => (
             <div key={i}>
               {e.from} —{e.label ? ` ${e.label} → ` : "→ "}
               {e.to}

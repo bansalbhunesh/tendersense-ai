@@ -14,6 +14,40 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+def _ocr_full_text(ocr: Any) -> str:
+    """Aggregate OCR text from top-level `text` or per-page `pages[].text`."""
+    if isinstance(ocr, str):
+        try:
+            ocr = json.loads(ocr)
+        except Exception:
+            return ocr.strip() if ocr else ""
+    if not isinstance(ocr, dict):
+        return ""
+    t = str(ocr.get("text") or "").strip()
+    if t:
+        return t
+    pages = ocr.get("pages") or []
+    if not isinstance(pages, list):
+        return ""
+    parts: list[str] = []
+    for p in pages:
+        if isinstance(p, dict) and p.get("text"):
+            parts.append(str(p["text"]))
+    return "\n".join(parts).strip()
+
+
+def _graph_criterion_label(c: dict[str, Any], cid: str) -> str:
+    raw = str(c.get("text_raw") or "").strip()
+    field = str(c.get("field") or "").strip()
+    if len(raw) >= 400:
+        base = raw[:397] + "…"
+    else:
+        base = raw or field or cid
+    if field and field not in base[:40]:
+        return f"{field}: {base}"[:420]
+    return base[:420]
+
+
 def overall_confidence(
     ocr_c: float,
     extraction_c: float,
@@ -127,13 +161,21 @@ def gather_evidence(
                 ocr = json.loads(ocr)
             except Exception:
                 ocr = {}
-        text = ocr.get("text") or ""
+        text = _ocr_full_text(ocr)
         ocr_c = float(ocr.get("quality_score") or ocr.get("mean_confidence") or 0.75)
         doc_id = str(doc.get("id", ""))
         fname = str(doc.get("filename", ""))
         dtype = str(doc.get("doc_type", "supporting"))
 
-        if field_name == "annual_turnover":
+        if field_name in (
+            "annual_turnover",
+            "net_worth",
+            "net_profit",
+            "turnover",
+            "emd_amount",
+            "bid_security",
+            "earnest_money",
+        ):
             for val, ext_c, snip in normalize_inr_from_text(text):
                 evs.append(
                     Evidence(
@@ -168,8 +210,8 @@ def gather_evidence(
                         doc_type=dtype,
                     )
                 )
-        elif field_name == "similar_projects_count":
-            nv, ec = extract_count(text, field_name)
+        elif field_name in ("similar_projects_count", "experience_years", "years_of_experience"):
+            nv, ec = extract_count(text, "similar_projects_count")
             if nv > 0:
                 evs.append(
                     Evidence(
@@ -262,7 +304,12 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
     context_text = ""
     for d in documents:
         ocr = d.get("ocr") or {}
-        text = ocr.get("text") if isinstance(ocr, dict) else ""
+        if isinstance(ocr, str):
+            try:
+                ocr = json.loads(ocr)
+            except Exception:
+                ocr = {}
+        text = _ocr_full_text(ocr)
         if text:
             context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:50000]}\n"
 
@@ -319,7 +366,21 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
     priority = list(criterion.get("source_priority") or ["supporting"])
     sem_amb = float(criterion.get("semantic_ambiguity_score") or 0)
 
-    KNOWN_FIELDS = ("annual_turnover", "gst_registration", "iso_9001", "generic_compliance", "similar_projects_count")
+    KNOWN_FIELDS = (
+        "annual_turnover",
+        "net_worth",
+        "net_profit",
+        "turnover",
+        "emd_amount",
+        "bid_security",
+        "earnest_money",
+        "gst_registration",
+        "iso_9001",
+        "generic_compliance",
+        "similar_projects_count",
+        "experience_years",
+        "years_of_experience",
+    )
 
     if field_name in KNOWN_FIELDS:
         evs = gather_evidence(criterion, bidder_id, documents)
@@ -411,7 +472,7 @@ def build_graph(
     edges: list[dict[str, Any]] = []
     for c in criteria:
         cid = str(c.get("id", ""))
-        nodes.append({"id": f"c-{cid}", "type": "criterion", "label": str(c.get("text_raw", cid))[:80]})
+        nodes.append({"id": f"c-{cid}", "type": "criterion", "label": _graph_criterion_label(c, cid)})
     for d in decisions:
         bid = str(d.get("bidder_id", ""))
         cid = str(d.get("criterion_id", ""))

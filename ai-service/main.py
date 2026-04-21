@@ -58,6 +58,7 @@ def validate_path(path: str) -> str:
         norm = os.path.normpath(raw)
         candidates.append(os.path.join(data_root, norm))
         candidates.append(os.path.join(data_root, os.path.basename(norm)))
+        candidates.append(os.path.join(os.getcwd(), norm))
         candidates.append(os.path.realpath(raw))
 
     seen: set[str] = set()
@@ -137,7 +138,14 @@ def process_document(req: ProcessDocReq) -> dict:
         logger.warning("Path validation failed: %s", req.path)
         return {"error": "invalid path", "text": "", "quality_score": 0.0}
 
-    cache_key = stable_hash_key("ocr:v1", req.path, req.document_id or "")
+    cache_fp = ""
+    if os.path.isfile(safe_path):
+        try:
+            st = os.stat(safe_path)
+            cache_fp = f"{st.st_mtime_ns}:{st.st_size}"
+        except OSError:
+            pass
+    cache_key = stable_hash_key("ocr:v1", req.path, req.document_id or "", cache_fp)
     if cached := cache_get_json(cache_key):
         _log_event("process_document_cache_hit", document_id=req.document_id)
         return cached

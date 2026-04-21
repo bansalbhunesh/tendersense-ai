@@ -82,7 +82,7 @@ func main() {
 			auth.POST("/tenders/:id/documents", handlers.UploadTenderDocument(database))
 			auth.POST("/tenders/:id/bidders", handlers.RegisterBidder(database))
 			auth.GET("/tenders/:id/bidders", handlers.ListBidders(database))
-			auth.POST("/tenders/:id/evaluate", handlers.TriggerEvaluation(tenderService, database))
+			auth.POST("/tenders/:id/evaluate", middleware.EvaluateRouteLimiter(10, 5), handlers.TriggerEvaluation(tenderService, database))
 			auth.GET("/tenders/:id/results", handlers.GetResults(database))
 			auth.GET("/tenders/:id/bidders/:bid/decisions", handlers.GetBidderBreakdown(database))
 			auth.GET("/tenders/:id/bidders/:bid/criteria/:crit/evidence", handlers.DecisionEvidence(database))

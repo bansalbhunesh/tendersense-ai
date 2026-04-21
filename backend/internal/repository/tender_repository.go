@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -29,6 +30,34 @@ func NewTenderRepository(db *sql.DB) TenderRepository {
 	return &sqlTenderRepository{db: db}
 }
 
+// enrichOCRPayload fills top-level "text" from per-page OCR when the aggregate field is empty.
+func enrichOCRPayload(ocr map[string]any) {
+	if ocr == nil {
+		return
+	}
+	t, _ := ocr["text"].(string)
+	if strings.TrimSpace(t) != "" {
+		return
+	}
+	pages, ok := ocr["pages"].([]any)
+	if !ok || len(pages) == 0 {
+		return
+	}
+	var b strings.Builder
+	for _, p := range pages {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pt, _ := pm["text"].(string)
+		b.WriteString(pt)
+		b.WriteByte('\n')
+	}
+	if s := strings.TrimSpace(b.String()); s != "" {
+		ocr["text"] = s
+	}
+}
+
 func (r *sqlTenderRepository) GetCriteria(ctx context.Context, tenderID string) ([]map[string]any, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, payload FROM criteria WHERE tender_id=$1`, tenderID)
 	if err != nil {
@@ -45,6 +74,7 @@ func (r *sqlTenderRepository) GetCriteria(ctx context.Context, tenderID string) 
 		}
 		var m map[string]any
 		if err := json.Unmarshal(payload, &m); err == nil {
+			delete(m, "id") // row UUID is authoritative for evaluation + UI
 			m["id"] = id
 			criteria = append(criteria, m)
 		}
@@ -87,6 +117,9 @@ func (r *sqlTenderRepository) GetBidderDocuments(ctx context.Context, bidderID s
 		var ocr map[string]any
 		if len(ocrRaw) > 0 {
 			_ = json.Unmarshal(ocrRaw, &ocr)
+		}
+		if ocr != nil {
+			enrichOCRPayload(ocr)
 		}
 		docs = append(docs, map[string]any{
 			"id": id, "filename": fname, "doc_type": dtype, "ocr": ocr,

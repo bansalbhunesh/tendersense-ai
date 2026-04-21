@@ -24,28 +24,37 @@ export default function TenderWorkspace() {
   );
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
 
-  async function refresh() {
-    const t = (await apiFetch(`/tenders/${tenderId}`)) as Record<string, unknown>;
-    setTender(t);
-    const b = (await apiFetch(`/tenders/${tenderId}/bidders`)) as { bidders: { id: string; name: string }[] };
-    setBidders(b.bidders || []);
+  async function refresh(): Promise<{ criteriaCount: number; bidderCount: number }> {
+    setPageLoading(true);
     try {
-      const r = (await apiFetch(`/tenders/${tenderId}/results`)) as {
-        decisions: Record<string, unknown>[];
-        graph: Record<string, unknown> | null;
-      };
-      setResults({
-        decisions: (r.decisions || []) as Decision[],
-        graph: r.graph,
-      });
-    } catch {
-      setResults(null);
+      const t = (await apiFetch(`/tenders/${tenderId}`)) as Record<string, unknown>;
+      setTender(t);
+      const b = (await apiFetch(`/tenders/${tenderId}/bidders`)) as { bidders: { id: string; name: string }[] };
+      const bl = b.bidders || [];
+      setBidders(bl);
+      try {
+        const r = (await apiFetch(`/tenders/${tenderId}/results`)) as {
+          decisions: Record<string, unknown>[];
+          graph: Record<string, unknown> | null;
+        };
+        setResults({
+          decisions: (r.decisions || []) as Decision[],
+          graph: r.graph,
+        });
+      } catch {
+        setResults(null);
+      }
+      const crit = ((t.criteria as unknown[]) || []).length;
+      return { criteriaCount: crit, bidderCount: bl.length };
+    } finally {
+      setPageLoading(false);
     }
   }
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [tenderId]);
 
   async function uploadTenderDoc(e: FormEvent) {
@@ -57,16 +66,28 @@ export default function TenderWorkspace() {
     const fd = new FormData();
     fd.append("file", input.files[0]);
     try {
-      await fetch(`/api/v1/tenders/${tenderId}/documents`, {
+      const j = (await fetch(`/api/v1/tenders/${tenderId}/documents`, {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("ts_token")}` },
         body: fd,
       }).then(async (r) => {
         if (!r.ok) throw new Error(await r.text());
         return r.json();
-      });
-      await refresh();
-      setMsg("Tender document processed — criteria extracted when OCR text is available.");
+      })) as { ocr?: { text?: string; quality_score?: number }; criteria_extracted?: number };
+      const { criteriaCount } = await refresh();
+      const ocr = j.ocr || {};
+      const textLen = String(ocr.text || "").trim().length;
+      const qs = Number(ocr.quality_score ?? 0);
+      const extracted = Number(j.criteria_extracted ?? 0);
+      if (textLen < 40 || qs < 0.12) {
+        setMsg(
+          `Saved, but OCR text is sparse (${textLen} chars, quality ${qs.toFixed(2)}). Criteria in workspace: ${criteriaCount}. Try a text-based PDF or higher-resolution scans.`,
+        );
+      } else {
+        setMsg(
+          `Processed: ${extracted} new criteria rows from this upload; ${criteriaCount} total criteria in workspace (OCR quality ${qs.toFixed(2)}).`,
+        );
+      }
     } catch (ex: unknown) {
       setMsg(String(ex));
     } finally {
@@ -125,20 +146,33 @@ export default function TenderWorkspace() {
 
   const criteriaList = useMemo(() => (tender?.criteria as unknown[]) || [], [tender]);
 
+  const criterionLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const raw of criteriaList) {
+      const c = raw as Record<string, unknown>;
+      const id = String(c.id || "");
+      if (!id) continue;
+      const label = String(c.text_raw || c.field || id);
+      m.set(id, label.length > 120 ? `${label.slice(0, 117)}…` : label);
+    }
+    return m;
+  }, [criteriaList]);
+
   async function runEval() {
-    if (criteriaList.length === 0) {
-      setMsg("Upload a tender document so criteria can be extracted before you run evaluation.");
-      setTab("docs");
-      return;
-    }
-    if (bidders.length === 0) {
-      setMsg("Register at least one bidder before running evaluation.");
-      setTab("bidders");
-      return;
-    }
     setBusy(true);
     setMsg(null);
     try {
+      const { criteriaCount, bidderCount } = await refresh();
+      if (criteriaCount === 0) {
+        setMsg("No criteria in this tender yet. Upload a tender document with extractable text first.");
+        setTab("docs");
+        return;
+      }
+      if (bidderCount === 0) {
+        setMsg("Register at least one bidder before running evaluation.");
+        setTab("bidders");
+        return;
+      }
       await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" });
       await refresh();
       setTab("results");
@@ -188,6 +222,12 @@ export default function TenderWorkspace() {
         ))}
       </div>
 
+      {pageLoading && (
+        <p className="muted" style={{ marginBottom: 12 }}>
+          Loading tender workspace…
+        </p>
+      )}
+
       {msg && (
         <div className="panel" style={{ marginBottom: 14, borderColor: "rgba(255,153,51,0.35)" }}>
           <span className="mono">{msg}</span>
@@ -210,11 +250,34 @@ export default function TenderWorkspace() {
           </form>
           <div style={{ height: 16 }} />
           <h3>Extracted criteria ({criteriaList.length})</h3>
-          {criteriaList.map((c, i) => (
-            <pre key={i} className="mono panel" style={{ marginTop: 8 }}>
-              {JSON.stringify(c, null, 2)}
-            </pre>
-          ))}
+          {criteriaList.map((raw, i) => {
+            const c = raw as Record<string, unknown>;
+            const id = String(c.id || "");
+            const field = String(c.field || "—");
+            const op = String(c.operator || "");
+            const val = c.value != null ? String(c.value) : "—";
+            const rawText = String(c.text_raw || "").slice(0, 280);
+            return (
+              <div key={id || i} className="panel" style={{ marginTop: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
+                  <strong>{field}</strong>
+                  <span className="mono muted" style={{ fontSize: "0.75rem" }}>
+                    {id.slice(0, 8)}…
+                  </span>
+                </div>
+                <p className="muted" style={{ marginTop: 6, marginBottom: 4 }}>
+                  {op} <span className="mono">{val}</span>
+                  {String(c.unit || "") ? ` ${String(c.unit)}` : ""}
+                </p>
+                {rawText && (
+                  <p className="mono" style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                    {rawText}
+                    {String(c.text_raw || "").length > 280 ? "…" : ""}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -314,11 +377,16 @@ export default function TenderWorkspace() {
               const dd = d as Decision;
               const v = String(dd.verdict || "");
               const cls = v === "ELIGIBLE" ? "ok" : v === "NOT_ELIGIBLE" ? "bad" : "review";
+              const cid = String(dd.criterion_id || "");
+              const critTitle = criterionLabelById.get(cid) || cid;
               return (
                 <div key={idx} className="panel" style={{ marginTop: 12 }}>
                   <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span className="mono" style={{ fontSize: '0.75rem', opacity: 0.7 }}>Criterion: {String(dd.criterion_id).slice(0, 8)}…</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: "75%" }}>
+                      <span style={{ fontWeight: 600 }}>{critTitle}</span>
+                      <span className="mono muted" style={{ fontSize: "0.75rem" }}>
+                        id {cid.slice(0, 8)}…
+                      </span>
                     </div>
                     <span className={`badge ${cls}`}>{v.replace(/_/g, " ")}</span>
                   </div>

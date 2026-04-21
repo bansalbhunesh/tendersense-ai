@@ -8,13 +8,18 @@ export default function Dashboard() {
   const [title, setTitle] = useState("Construction services — eligibility screening");
   const [rows, setRows] = useState<TenderRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function load() {
+    setLoading(true);
+    setErr(null);
     try {
       const data = (await apiFetch("/tenders")) as { tenders: TenderRow[] };
       setRows(data.tenders || []);
     } catch (e: unknown) {
       setErr(String(e));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -99,29 +104,34 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td style={{ fontWeight: 600 }}>{r.title}</td>
-                <td>
-                  <span className={`badge ${r.status === 'open' ? 'ok' : 'review'}`}>
-                    {r.status}
-                  </span>
-                </td>
-                <td>
-                  <Link to={`/tender/${r.id}`}>
-                    <button className="ghost" style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
-                      Open Workspace →
-                    </button>
-                  </Link>
+            {loading ? (
+              <tr>
+                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
+                  Loading tenders…
                 </td>
               </tr>
-            ))}
-            {rows.length === 0 && (
+            ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={3} style={{ textAlign: 'center', padding: 40 }} className="muted">
+                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
                   No active tenders found. Create your first workspace above.
                 </td>
               </tr>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 600 }}>{r.title}</td>
+                  <td>
+                    <span className={`badge ${r.status === "open" ? "ok" : "review"}`}>{r.status}</span>
+                  </td>
+                  <td>
+                    <Link to={`/tender/${r.id}`}>
+                      <button className="ghost" style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
+                        Open Workspace →
+                      </button>
+                    </Link>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>

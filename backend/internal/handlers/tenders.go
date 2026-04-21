@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -163,15 +164,30 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		if ocrRes.Text != "" {
 			_ = util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
 			for _, cr := range extRes.Criteria {
-				if cr["id"] == nil || cr["id"] == "" {
-					cr["id"] = uuid.NewString()
+				if cr == nil {
+					continue
 				}
-				b, _ := json.Marshal(cr)
-				cid, _ := cr["id"].(string)
-				if cid == "" {
-					cid = uuid.NewString()
+				field, _ := cr["field"].(string)
+				op, _ := cr["operator"].(string)
+				val := fmt.Sprint(cr["value"])
+				var dup int
+				_ = db.QueryRow(`
+					SELECT COUNT(*)::int FROM criteria
+					WHERE tender_id=$1
+					  AND COALESCE(payload->>'field','') = $2
+					  AND COALESCE(payload->>'operator','') = $3
+					  AND COALESCE(payload->>'value','') = $4
+				`, tenderID, field, op, val).Scan(&dup)
+				if dup > 0 {
+					continue
 				}
-				db.Exec(`INSERT INTO criteria (id, tender_id, payload) VALUES ($1,$2,$3::jsonb)`, cid, tenderID, string(b))
+				cid := uuid.NewString()
+				cr["id"] = cid
+				b, err := json.Marshal(cr)
+				if err != nil {
+					continue
+				}
+				_, _ = db.Exec(`INSERT INTO criteria (id, tender_id, payload) VALUES ($1,$2,$3::jsonb)`, cid, tenderID, string(b))
 			}
 		}
 
