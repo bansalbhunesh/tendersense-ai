@@ -279,19 +279,40 @@ export default function TenderWorkspace() {
             </table>
             <h3 style={{ marginTop: 16 }}>Criterion-level detail</h3>
             {results?.decisions?.map((d, idx) => {
-              const dd = d as Decision;
+              const dd = d as any;
               const v = String(dd.verdict || "");
               const cls = v === "ELIGIBLE" ? "ok" : v === "NOT_ELIGIBLE" ? "bad" : "review";
               return (
-                <div key={idx} className="panel" style={{ marginTop: 10 }}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <span className="mono">{String(dd.criterion_id)}</span>
-                    <span className={`badge ${cls}`}>{v}</span>
+                <div key={idx} className="panel" style={{ marginTop: 12 }}>
+                  <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className="mono" style={{ fontSize: '0.75rem', opacity: 0.7 }}>Criterion: {String(dd.criterion_id).slice(0, 8)}…</span>
+                    </div>
+                    <span className={`badge ${cls}`}>{v.replace('_', ' ')}</span>
                   </div>
-                  <p className="muted" style={{ marginTop: 8 }}>
-                    {String(dd.reasoning || dd.reason || "")}
-                  </p>
-                  <p className="mono muted">Confidence: {Number(dd.confidence || 0).toFixed(3)}</p>
+                  
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 4 }}>Reasoning</div>
+                    <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+                      {String(dd.reasoning || dd.reason || "No reasoning provided.")}
+                    </p>
+                  </div>
+
+                  {dd.evidence_snapshot && (
+                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div className="row" style={{ marginBottom: 8 }}>
+                         <span className="badge review" style={{ fontSize: '0.6rem' }}>Evidence Snapshot</span>
+                         <span className="mono" style={{ fontSize: '0.7rem' }}>{dd.evidence_snapshot.document}</span>
+                      </div>
+                      <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                        "{dd.evidence_snapshot.evidence_quote || dd.evidence_snapshot.extracted_value}"
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end', opacity: 0.6 }}>
+                    <span className="mono" style={{ fontSize: '0.7rem' }}>CONFIDENCE: {Number(dd.confidence || 0).toFixed(3)}</span>
+                  </div>
                 </div>
               );
             })}

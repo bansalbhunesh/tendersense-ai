@@ -266,22 +266,31 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
         if text:
             context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:50000]}\n"
 
-    prompt = f"""You are a procurement expert evaluating a bidder's eligibility.
+    prompt = f"""You are a senior procurement auditor evaluating bid eligibility.
 Criterion to verify:
-Field: {criterion.get('field')}
-Text: {criterion.get('text_raw')}
-Requirement: {criterion.get('operator')} {criterion.get('value')} {criterion.get('unit')}
+- Field: {criterion.get('field')}
+- Label: {criterion.get('text_raw')}
+- Requirement: {criterion.get('operator')} {criterion.get('value')} {criterion.get('unit', '')}
+
+Evaluation Protocol:
+1. Search across all provided documents for the specific information requested.
+2. If multiple values conflict, prefer the one from more authoritative documents (e.g., Audited Balance Sheets over simple Undertakings).
+3. Determine if the requirement is met mathematically or semantically.
 
 Evidence Documents:
 {context_text}
 
 Return ONLY a JSON object:
 {{
-  "verdict": "ELIGIBLE" or "NOT_ELIGIBLE" or "NEEDS_REVIEW",
-  "reason": "short_label",
-  "confidence": float_0_to_1,
-  "reasoning": "one sentence",
-  "evidence_snapshot": {{ "document": "filename", "extracted_value": "snippet" }}
+  "verdict": "ELIGIBLE" | "NOT_ELIGIBLE" | "NEEDS_REVIEW",
+  "reason": "DEPOSIT_MISSING" | "TURNOVER_LOW" | "EXP_SHORT" | "MATCH" | etc,
+  "confidence": float (0-1),
+  "reasoning": "Three-step explanation of your discovery and logic.",
+  "evidence_snapshot": {{ 
+      "document": "filename", 
+      "evidence_quote": "Exact text snippet from the document",
+      "extracted_value": "The specific value or fact extracted"
+  }}
 }}
 """
     try:

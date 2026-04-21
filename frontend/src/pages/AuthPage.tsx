@@ -42,44 +42,42 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="shell" style={{ maxWidth: 480 }}>
-      <div className="topbar">
-        <div className="brand">
-          <strong>TenderSense AI</strong>
-          <span>CRPF procurement evaluation</span>
+    <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 20 }}>
+      <div style={{ maxWidth: 440, width: '100%' }}>
+        <div className="brand" style={{ justifyContent: 'center', marginBottom: 32 }}>
+          <strong style={{ fontSize: '2rem' }}>TenderSense AI</strong>
         </div>
-      </div>
-      <div className="panel">
-        <h1>Officer access</h1>
-        <p className="muted">
-          Sign in to upload tenders, run the evaluation pipeline, and review flagged criteria with full audit
-          provenance.
-        </p>
-        <form style={{ marginTop: 16 }}>
-          <label>Email</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-          <div style={{ height: 12 }} />
-          <label>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
-          {err && (
-            <p className="muted" style={{ color: "#ff9b9b", marginTop: 10 }}>
-              {err}
-            </p>
-          )}
-          <div className="row" style={{ marginTop: 16 }}>
-            <button className="primary" disabled={busy} onClick={onLogin}>
-              Sign in
-            </button>
-            <button className="ghost" disabled={busy} onClick={onRegister}>
-              Create account
-            </button>
-          </div>
-        </form>
+        <div className="panel">
+          <h1>Officer Access</h1>
+          <p className="muted">
+            Secure procurement evaluation system. Authenticate to access tender workspaces and the evaluation pipeline.
+          </p>
+          <form style={{ marginTop: 24 }} onSubmit={(e) => e.preventDefault()}>
+            <label>Department Email</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+            <div style={{ height: 16 }} />
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            {err && (
+              <p className="mono" style={{ color: "var(--bad)", marginTop: 12, fontSize: '0.8rem' }}>
+                {err}
+              </p>
+            )}
+            <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
+              <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onLogin}>
+                Sign in
+              </button>
+              <button className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
+                Register
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

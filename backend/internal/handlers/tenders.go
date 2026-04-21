@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tendersense/backend/internal/util"
 )
 
 type tenderCreate struct {
@@ -149,7 +150,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Pages   []any   `json:"pages"`
 			Engine  string  `json:"engine"`
 		}
-		_ = PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
+		_ = util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
 
@@ -159,7 +160,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Criteria []map[string]any `json:"criteria"`
 		}{}
 		if ocrRes.Text != "" {
-			_ = PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
+			_ = util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
 			for _, cr := range extRes.Criteria {
 				if cr["id"] == nil || cr["id"] == "" {
 					cr["id"] = uuid.NewString()
@@ -179,7 +180,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 
 func WriteAudit(db *sql.DB, userID, tenderID, action string, payload map[string]any) {
 	b, _ := json.Marshal(payload)
-	sum := ChecksumJSON(map[string]any{"action": action, "payload": json.RawMessage(b)})
+	sum := util.ChecksumJSON(map[string]any{"action": action, "payload": json.RawMessage(b)})
 	db.Exec(`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
 		nullUUID(tenderID), nullUUID(userID), action, string(b), sum)
 }

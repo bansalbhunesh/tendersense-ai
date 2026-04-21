@@ -22,12 +22,22 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
       <div className="graph">
         {graph.nodes.map((n) => (
           <div key={n.id} className={`graph-node ${n.type}`}>
-            <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{n.type.toUpperCase()}</div>
-            <small>{n.label}</small>
-            {typeof n.confidence === "number" && (
-              <small>Confidence: {(n.confidence * 100).toFixed(1)}%</small>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: "0.7rem", opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {n.type}
+              </div>
+              {typeof n.confidence === "number" && (
+                <span className={`badge ${n.confidence > 0.8 ? 'ok' : 'review'}`} style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                  {(n.confidence * 100).toFixed(0)}%
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '0.9rem', marginBottom: 8 }}>{n.label}</div>
+            {n.bidder_id && (
+              <div className="mono" style={{ fontSize: '0.7rem', opacity: 0.6 }}>
+                Bidder: {n.bidder_id.slice(0, 8)}…
+              </div>
             )}
-            {n.bidder_id && <small className="mono">bidder {n.bidder_id.slice(0, 8)}…</small>}
           </div>
         ))}
       </div>

@@ -17,6 +17,8 @@ import (
 	"github.com/tendersense/backend/internal/db"
 	"github.com/tendersense/backend/internal/handlers"
 	"github.com/tendersense/backend/internal/middleware"
+	"github.com/tendersense/backend/internal/repository"
+	"github.com/tendersense/backend/internal/service"
 )
 
 func main() {
@@ -33,6 +35,12 @@ func main() {
 		log.Fatalf("Critical Error: Database connection failed: %v", err)
 	}
 	defer database.Close()
+
+	// 1. Initialize repository
+	repo := repository.NewTenderRepository(database)
+	
+	// 2. Initialize services
+	tenderService := service.NewTenderService(repo)
 
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("Critical Error: Migration failed: %v", err)
@@ -74,7 +82,7 @@ func main() {
 			auth.POST("/tenders/:id/documents", handlers.UploadTenderDocument(database))
 			auth.POST("/tenders/:id/bidders", handlers.RegisterBidder(database))
 			auth.GET("/tenders/:id/bidders", handlers.ListBidders(database))
-			auth.POST("/tenders/:id/evaluate", handlers.TriggerEvaluation(database))
+			auth.POST("/tenders/:id/evaluate", handlers.TriggerEvaluation(tenderService, database))
 			auth.GET("/tenders/:id/results", handlers.GetResults(database))
 			auth.GET("/tenders/:id/bidders/:bid/decisions", handlers.GetBidderBreakdown(database))
 			auth.GET("/tenders/:id/bidders/:bid/criteria/:crit/evidence", handlers.DecisionEvidence(database))

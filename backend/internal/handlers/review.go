@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tendersense/backend/internal/util"
 )
 
 var allowedOverrideVerdicts = map[string]struct{}{
@@ -103,7 +104,7 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 		m["reviewer_override"] = req.Justification
 		m["override_by"] = uid
 		newB, _ := json.Marshal(m)
-		sum := ChecksumJSON(json.RawMessage(newB))
+		sum := util.ChecksumJSON(json.RawMessage(newB))
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`UPDATE decisions SET payload=$4::jsonb, checksum=$5 WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
 			req.TenderID, req.BidderID, req.CriterionID, string(newB), sum); err != nil {
@@ -122,7 +123,7 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 			"new_verdict": nv, "justification": req.Justification,
 		}
 		ab, _ := json.Marshal(audit)
-		ch := ChecksumJSON(audit)
+		ch := util.ChecksumJSON(audit)
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
 			req.TenderID, uid, "reviewer.override", string(ab), ch); err != nil {

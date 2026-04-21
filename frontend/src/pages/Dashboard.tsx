@@ -85,30 +85,41 @@ export default function Dashboard() {
 
       <div style={{ height: 16 }} />
 
-      <div className="panel">
-        <h2>Active tenders</h2>
+      <div className="panel" style={{ marginTop: 24 }}>
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
+          <h2>Active Tenders</h2>
+          <span className="badge ok">{rows.length} Total</span>
+        </div>
         <table className="table">
           <thead>
             <tr>
               <th>Title</th>
               <th>Status</th>
-              <th>Open</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td>{r.title}</td>
-                <td>{r.status}</td>
+                <td style={{ fontWeight: 600 }}>{r.title}</td>
                 <td>
-                  <Link to={`/tender/${r.id}`}>Workspace →</Link>
+                  <span className={`badge ${r.status === 'open' ? 'ok' : 'review'}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td>
+                  <Link to={`/tender/${r.id}`}>
+                    <button className="ghost" style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
+                      Open Workspace →
+                    </button>
+                  </Link>
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={3} className="muted">
-                  No tenders yet — create one to begin.
+                <td colSpan={3} style={{ textAlign: 'center', padding: 40 }} className="muted">
+                  No active tenders found. Create your first workspace above.
                 </td>
               </tr>
             )}
