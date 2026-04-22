@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -23,9 +24,43 @@ var (
 	evaluateClient = &http.Client{
 		Timeout: 15 * time.Minute,
 	}
+	aiCircuit = &simpleCircuitBreaker{
+		failureThreshold: 5,
+		cooldown:         30 * time.Second,
+	}
 )
 
 const postJSONMaxAttempts = 3
+
+type simpleCircuitBreaker struct {
+	mu               sync.Mutex
+	consecutiveFails int
+	openUntil        time.Time
+	failureThreshold int
+	cooldown         time.Duration
+}
+
+func (cb *simpleCircuitBreaker) allow() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return time.Now().After(cb.openUntil)
+}
+
+func (cb *simpleCircuitBreaker) onSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.consecutiveFails = 0
+	cb.openUntil = time.Time{}
+}
+
+func (cb *simpleCircuitBreaker) onFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.consecutiveFails++
+	if cb.consecutiveFails >= cb.failureThreshold {
+		cb.openUntil = time.Now().Add(cb.cooldown)
+	}
+}
 
 // HTTPStatusError is returned for AI HTTP 4xx responses (no retry).
 type HTTPStatusError struct {
@@ -58,10 +93,14 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if !aiCircuit.allow() {
+		return fmt.Errorf("ai service circuit open; retry later")
+	}
 	var lastErr error
 	for attempt := 1; attempt <= postJSONMaxAttempts; attempt++ {
 		err := doPostJSON(ctx, aiClient, path, body, out)
 		if err == nil {
+			aiCircuit.onSuccess()
 			return nil
 		}
 		var hs *HTTPStatusError
@@ -69,6 +108,7 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 			return err
 		}
 		lastErr = err
+		aiCircuit.onFailure()
 		if attempt >= postJSONMaxAttempts {
 			break
 		}

@@ -3,10 +3,34 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tendersense/backend/internal/service"
+)
+
+type evalJob struct {
+	ID        string     `json:"id"`
+	TenderID  string     `json:"tender_id"`
+	UserID    string     `json:"user_id"`
+	Status    string     `json:"status"`
+	Error     string     `json:"error,omitempty"`
+	Result    any        `json:"result,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
+}
+
+var (
+	evalJobsMu sync.Mutex
+	evalJobs   = map[string]*evalJob{}
+	evalActive = map[string]string{}
 )
 
 func TriggerEvaluation(svc service.TenderService, db *sql.DB) gin.HandlerFunc {
@@ -17,15 +41,86 @@ func TriggerEvaluation(svc service.TenderService, db *sql.DB) gin.HandlerFunc {
 		}
 		uid, _ := c.Get("user_id")
 		userID, _ := uid.(string)
+		jobID := uuid.NewString()
+		now := time.Now()
+		key := userID + ":" + tenderID
+		evalJobsMu.Lock()
+		if existingID, ok := evalActive[key]; ok {
+			if existingJob, exists := evalJobs[existingID]; exists && (existingJob.Status == "queued" || existingJob.Status == "running") {
+				evalJobsMu.Unlock()
+				c.JSON(http.StatusAccepted, gin.H{
+					"job_id":    existingJob.ID,
+					"status":    existingJob.Status,
+					"tender_id": tenderID,
+				})
+				return
+			}
+		}
+		job := &evalJob{
+			ID:        jobID,
+			TenderID:  tenderID,
+			UserID:    userID,
+			Status:    "queued",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		evalJobs[jobID] = job
+		evalActive[key] = jobID
+		evalJobsMu.Unlock()
 
-		res, err := svc.TriggerEvaluation(c.Request.Context(), tenderID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		go func() {
+			started := time.Now()
+			evalJobsMu.Lock()
+			job.Status = "running"
+			job.StartedAt = &started
+			job.UpdatedAt = started
+			evalJobsMu.Unlock()
+
+			res, err := svc.TriggerEvaluation(c.Request.Context(), tenderID)
+			ended := time.Now()
+			evalJobsMu.Lock()
+			defer evalJobsMu.Unlock()
+			job.UpdatedAt = ended
+			job.EndedAt = &ended
+			delete(evalActive, key)
+			if err != nil {
+				job.Status = "failed"
+				job.Error = err.Error()
+				log.Printf(`{"event":"evaluation_async_failed","job_id":"%s","tender_id":"%s","error":"%s"}`, jobID, tenderID, err.Error())
+				return
+			}
+			job.Status = "completed"
+			job.Result = res
+			WriteAudit(db, userID, tenderID, "evaluation.completed", map[string]any{"decisions": res.Decisions, "job_id": jobID})
+		}()
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"job_id":    jobID,
+			"status":    job.Status,
+			"tender_id": tenderID,
+		})
+	}
+}
+
+func GetEvaluationJobStatus(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tenderID := c.Param("id")
+		if !RequireTenderOwner(db, c, tenderID) {
 			return
 		}
-
-		WriteAudit(db, userID, tenderID, "evaluation.completed", map[string]any{"decisions": res.Decisions})
-		c.JSON(http.StatusOK, res)
+		jobID := c.Param("job")
+		evalJobsMu.Lock()
+		job, ok := evalJobs[jobID]
+		evalJobsMu.Unlock()
+		if !ok || job.TenderID != tenderID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return
+		}
+		status := http.StatusOK
+		if job.Status == "failed" {
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, job)
 	}
 }
 
@@ -60,7 +155,17 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 		if len(graph) > 0 {
 			json.Unmarshal(graph, &g)
 		}
-		c.JSON(http.StatusOK, gin.H{"tender_id": tenderID, "decisions": decisions, "graph": g})
+		state := "complete"
+		if len(decisions) == 0 {
+			var evalStatus string
+			err = db.QueryRow(`SELECT status FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&evalStatus)
+			if err == nil && evalStatus != "" {
+				state = evalStatus
+			} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				state = "unknown"
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"tender_id": tenderID, "decisions": decisions, "graph": g, "state": state})
 	}
 }
 

@@ -137,7 +137,10 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 			Engine  string           `json:"engine"`
 			Pages   []map[string]any `json:"pages"`
 		}
-		_ = util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
+		if err := util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "ocr service unavailable", "detail": err.Error()})
+			return
+		}
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
 		WriteAudit(db, uid, tenderID, "bidder.document.uploaded", map[string]any{"document_id": docID, "bidder_id": bidderID})

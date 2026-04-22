@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -25,10 +26,7 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using platform environment variables")
 	}
-
-	if gin.Mode() == gin.ReleaseMode && strings.TrimSpace(os.Getenv("JWT_SECRET")) == "" {
-		log.Fatal("JWT_SECRET must be set when GIN_MODE=release")
-	}
+	validateRequiredEnv()
 
 	database, err := db.Connect()
 	if err != nil {
@@ -47,17 +45,15 @@ func main() {
 	}
 
 	r := gin.New()
+	r.Use(middleware.RequestObservability())
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.MaxMultipartMemory = 50 << 20 // 50 MB max upload
 
 	// Modern CORS configuration
 	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // For demo. Restricted in production via ENV.
-	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
-		config.AllowOrigins = strings.Split(origins, ",")
-		config.AllowAllOrigins = false
-	}
+	config.AllowAllOrigins = false
+	config.AllowOrigins = strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Accept"}
 	r.Use(cors.New(config))
@@ -83,6 +79,7 @@ func main() {
 			auth.POST("/tenders/:id/bidders", handlers.RegisterBidder(database))
 			auth.GET("/tenders/:id/bidders", handlers.ListBidders(database))
 			auth.POST("/tenders/:id/evaluate", middleware.EvaluateRouteLimiter(10, 5), handlers.TriggerEvaluation(tenderService, database))
+			auth.GET("/tenders/:id/evaluate/jobs/:job", handlers.GetEvaluationJobStatus(database))
 			auth.GET("/tenders/:id/results", handlers.GetResults(database))
 			auth.GET("/tenders/:id/bidders/:bid/decisions", handlers.GetBidderBreakdown(database))
 			auth.GET("/tenders/:id/bidders/:bid/criteria/:crit/evidence", handlers.DecisionEvidence(database))
@@ -138,4 +135,17 @@ func main() {
 	}
 
 	log.Println("Server exiting")
+}
+
+func validateRequiredEnv() {
+	required := []string{"JWT_SECRET", "DATABASE_URL", "ALLOWED_ORIGINS"}
+	missing := make([]string, 0)
+	for _, key := range required {
+		if strings.TrimSpace(os.Getenv(key)) == "" {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		log.Fatal(fmt.Sprintf("missing required environment variables: %v", missing))
+	}
 }

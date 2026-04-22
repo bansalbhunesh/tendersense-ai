@@ -156,7 +156,10 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Pages   []any   `json:"pages"`
 			Engine  string  `json:"engine"`
 		}
-		_ = util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
+		if err := util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "ocr service unavailable", "detail": err.Error()})
+			return
+		}
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
 
@@ -167,7 +170,10 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		}{}
 		insertedCount := 0
 		if ocrRes.Text != "" {
-			_ = util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
+			if err := util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "criteria extraction unavailable", "detail": err.Error()})
+				return
+			}
 			for _, cr := range extRes.Criteria {
 				if cr == nil {
 					continue

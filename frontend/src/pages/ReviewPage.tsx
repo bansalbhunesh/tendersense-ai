@@ -15,6 +15,8 @@ type Item = {
 export default function ReviewPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [queueFilter, setQueueFilter] = useState("");
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [tenderId, setTenderId] = useState("");
   const [bidderId, setBidderId] = useState("");
@@ -33,10 +35,15 @@ export default function ReviewPage() {
       : "";
 
   async function load() {
-    const q = (await apiFetch("/review/queue")) as { items: Item[] };
-    setItems(q.items || []);
-    const a = (await apiFetch("/audit")) as { entries: Record<string, unknown>[] };
-    setAudit(a.entries || []);
+    setLoading(true);
+    try {
+      const q = (await apiFetch("/review/queue")) as { items: Item[] };
+      setItems(q.items || []);
+      const a = (await apiFetch("/audit")) as { entries: Record<string, unknown>[] };
+      setAudit(a.entries || []);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -79,8 +86,25 @@ export default function ReviewPage() {
       <div className="grid2">
         <div className="panel">
           <h2>Queue</h2>
+          <input
+            placeholder="Filter by tender, bidder, criterion"
+            value={queueFilter}
+            onChange={(e) => setQueueFilter(e.target.value)}
+          />
+          <div style={{ height: 10 }} />
+          {loading && <p className="muted">Loading review queue…</p>}
           {items.length === 0 && <p className="muted">No open review items.</p>}
-          {items.map((it) => (
+          {items
+            .filter((it) => {
+              const q = queueFilter.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                String(it.tender_title || it.tender_id).toLowerCase().includes(q) ||
+                String(it.bidder_name || it.bidder_id).toLowerCase().includes(q) ||
+                String(it.criterion_id).toLowerCase().includes(q)
+              );
+            })
+            .map((it) => (
             <div key={it.id} className="panel" style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 700 }}>{it.tender_title || `Tender ${it.tender_id.slice(0, 8)}…`}</div>
               <div className="muted">Bidder: {it.bidder_name || it.bidder_id.slice(0, 8)}</div>

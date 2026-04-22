@@ -40,6 +40,27 @@ export async function apiFetch(path: string, opts: RequestInit = {}) {
   return res.text();
 }
 
+export async function apiUpload(path: string, form: FormData, opts: RequestInit = {}) {
+  const t = token();
+  const headers: Record<string, string> = {
+    ...(opts.headers as Record<string, string>),
+  };
+  if (t) headers["Authorization"] = `Bearer ${t}`;
+  const res = await fetch(API + path, { ...opts, method: opts.method || "POST", headers, body: form });
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("ts_token");
+      if (typeof window !== "undefined" && window.location.pathname !== "/") {
+        window.location.assign("/");
+      }
+    }
+    throw new Error(await readErrorMessage(res));
+  }
+  const ct = res.headers.get("content-type");
+  if (ct && ct.includes("application/json")) return res.json();
+  return res.text();
+}
+
 export async function login(email: string, password: string) {
   const r = await fetch(API + "/auth/login", {
     method: "POST",

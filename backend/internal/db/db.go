@@ -12,7 +12,7 @@ import (
 func Connect() (*sql.DB, error) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://tendersense:tendersense@localhost:5432/tendersense?sslmode=disable"
+		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,14 +19,13 @@ type Claims struct {
 }
 
 func JWTSecret() []byte {
-	s := os.Getenv("JWT_SECRET")
-	if s == "" {
-		return []byte("dev-secret-change-me")
-	}
-	return []byte(s)
+	return []byte(os.Getenv("JWT_SECRET"))
 }
 
 func GenerateToken(userID, email string) (string, error) {
+	if len(JWTSecret()) == 0 {
+		return "", errors.New("JWT_SECRET not configured")
+	}
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
@@ -40,6 +40,10 @@ func GenerateToken(userID, email string) (string, error) {
 
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if len(JWTSecret()) == 0 {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "auth not configured"})
+			return
+		}
 		h := c.GetHeader("Authorization")
 		if h == "" || !strings.HasPrefix(h, "Bearer ") {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})

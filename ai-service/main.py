@@ -36,6 +36,13 @@ _MAX_EVAL_BIDDERS = int(os.getenv("MAX_EVAL_BIDDERS", "100"))
 DATA_DIR = os.path.abspath(os.getenv("DATA_DIR", "/app/data/uploads"))
 
 
+def _require_env(name: str) -> str:
+    val = (os.getenv(name) or "").strip()
+    if not val:
+        raise RuntimeError(f"missing required environment variable: {name}")
+    return val
+
+
 def _log_event(event: str, **fields: object) -> None:
     try:
         payload = json.dumps({"event": event, **fields}, default=str)
@@ -94,6 +101,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def startup_validate_env() -> None:
+    _require_env("DATA_DIR")
+    _require_env("ALLOWED_ORIGINS")
+    _log_event("startup_ok", data_dir=DATA_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +242,34 @@ def evaluate(req: EvaluateReq) -> dict:
         bidders=len(req.bidders),
     )
     try:
+        cache_key = stable_hash_key(
+            "evaluate:v2",
+            req.tender_id,
+            req.criteria,
+            [
+                {
+                    "bidder_id": b.get("bidder_id"),
+                    "documents": [
+                        {
+                            "id": d.get("id"),
+                            "doc_type": d.get("doc_type"),
+                            "filename": d.get("filename"),
+                        }
+                        for d in (b.get("documents") or [])
+                    ],
+                }
+                for b in req.bidders
+            ],
+        )
+        if cached := cache_get_json(cache_key):
+            _log_event("evaluate_cache_hit", tender_id=req.tender_id)
+            return cached
         result = run_evaluation(req.model_dump())
+        cache_set_json(
+            cache_key,
+            result,
+            ttl_seconds=int(os.getenv("EVALUATE_CACHE_TTL_SECONDS", "900")),
+        )
         decisions = result.get("decisions") if isinstance(result, dict) else None
         n = len(decisions) if isinstance(decisions, list) else 0
         _log_event("evaluate_ok", tender_id=req.tender_id, decisions=n)

@@ -337,6 +337,8 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
     max_docs = int(os.getenv("LLM_MAX_DOCS", "8"))
     max_chars = int(os.getenv("LLM_MAX_CONTEXT_CHARS", "180000"))
     context_text = ""
+    field_name = str(criterion.get("field") or "").lower().strip()
+    field_tokens = [t for t in re.split(r"[_\s\-]+", field_name) if len(t) >= 3]
     for d in documents[:max_docs]:
         ocr = d.get("ocr") or {}
         if isinstance(ocr, str):
@@ -346,7 +348,12 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
                 ocr = {}
         text = _ocr_full_text(ocr)
         if text:
-            snippet = f"\n--- Document: {d.get('filename')} ---\n{text[:40000]}\n"
+            selected = text[:12000]
+            if field_tokens:
+                lines = [ln for ln in text.splitlines() if any(tok in ln.lower() for tok in field_tokens)]
+                if lines:
+                    selected = "\n".join(lines)[:12000]
+            snippet = f"\n--- Document: {d.get('filename')} ---\n{selected}\n"
             room = max_chars - len(context_text)
             if room <= 0:
                 break
@@ -394,10 +401,10 @@ Return ONLY a JSON object:
         if match:
             return json.loads(match.group(0))
         return {"verdict": "NEEDS_REVIEW", "reason": "PARSE_ERROR", "confidence": 0.0,
-                "reasoning": "Could not parse LLM response."}
+                "reasoning": "Could not parse LLM response.", "decision_trace": {"mode": "llm", "fallback": "parse_error"}}
     except Exception as e:
         return {"verdict": "NEEDS_REVIEW", "reason": "LLM_FAILURE", "confidence": 0.0,
-                "reasoning": f"LLM evaluation failed: {e!s}"}
+                "reasoning": f"LLM evaluation failed: {e!s}", "decision_trace": {"mode": "llm", "fallback": "llm_failure"}}
 
 
 def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
@@ -441,6 +448,7 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
                 "reviewer_required": True,
                 "reasoning": "No evidence extracted for this criterion.",
                 "ambiguity": {"extraction": 1.0, "semantic": sem_amb, "conflict": 0.0},
+                "decision_trace": {"mode": "deterministic", "field": field_name, "evidence_count": 0},
             }
 
         if any(e.conflicts_with for e in evs):
@@ -452,12 +460,14 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
                 "reviewer_required": True,
                 "reasoning": "Conflicting values detected across documents.",
                 "ambiguity": {"extraction": 0.0, "semantic": sem_amb, "conflict": 1.0},
+                "decision_trace": {"mode": "deterministic", "field": field_name, "evidence_count": len(evs)},
             }
 
         best = select_best_evidence(evs, priority)
         if best is None:
             return {"criterion_id": crit_id, "bidder_id": bidder_id,
-                    "verdict": "NEEDS_REVIEW", "reason": "NO_BEST_EVIDENCE", "confidence": 0.0}
+                    "verdict": "NEEDS_REVIEW", "reason": "NO_BEST_EVIDENCE", "confidence": 0.0,
+                    "decision_trace": {"mode": "deterministic", "field": field_name, "fallback": "no_best_evidence"}}
 
         spi = source_priority_index(best.doc_type, priority)
         cp = 1.0 if best.conflicts_with else 0.0
@@ -471,6 +481,7 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
                 "reviewer_required": True,
                 "reasoning": "OCR confidence below threshold.",
                 "ambiguity": {"extraction": 1.0 - best.ocr_confidence, "semantic": sem_amb, "conflict": 0.0},
+                "decision_trace": {"mode": "deterministic", "field": field_name, "ocr_confidence": best.ocr_confidence},
             }
 
         op = str(criterion.get("operator", "=="))
@@ -485,6 +496,7 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
                 "reviewer_required": True,
                 "reasoning": f"{op} {target}; extracted {best.normalized_value} but confidence/ambiguity requires review.",
                 "ambiguity": {"extraction": max(0, 0.9 - best.extraction_confidence), "semantic": sem_amb, "conflict": 0.0},
+                "decision_trace": {"mode": "deterministic", "field": field_name, "overall_confidence": conf},
             }
 
         verdict = "ELIGIBLE" if passes else "NOT_ELIGIBLE"
@@ -502,10 +514,20 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
                 "normalized_value": best.normalized_value,
                 "ocr_confidence": best.ocr_confidence,
             },
+            "decision_trace": {
+                "mode": "deterministic",
+                "field": field_name,
+                "operator": op,
+                "target": target,
+                "extracted": best.normalized_value,
+                "source_doc": best.filename,
+            },
         }
 
     # Unknown fields: fall back to LLM
     res = call_llm_eval(criterion, bidder_id, documents)
+    if "decision_trace" not in res:
+        res["decision_trace"] = {"mode": "llm", "field": field_name}
     res["criterion_id"] = crit_id
     res["bidder_id"] = bidder_id
     return res

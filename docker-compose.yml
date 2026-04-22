@@ -1,6 +1,7 @@
 services:
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -11,6 +12,7 @@ services:
 
   db:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: tendersense
       POSTGRES_PASSWORD: tendersense
@@ -27,6 +29,7 @@ services:
 
   ai-service:
     build: ./ai-service
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
@@ -34,6 +37,8 @@ services:
       - ANTHROPIC_MODEL=claude-sonnet-4-20250514
       - DATA_DIR=/app/data/uploads
       - REDIS_URL=redis://redis:6379/0
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+      - EVALUATE_CACHE_TTL_SECONDS=${EVALUATE_CACHE_TTL_SECONDS:-900}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
       interval: 10s
@@ -47,6 +52,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:

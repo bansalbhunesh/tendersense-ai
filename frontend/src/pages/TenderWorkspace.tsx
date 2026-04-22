@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { apiFetch } from "../api";
+import { apiFetch, apiUpload } from "../api";
 import ReasoningGraph from "../components/ReasoningGraph";
 
 type Decision = Record<string, unknown> & {
@@ -28,25 +28,29 @@ export default function TenderWorkspace() {
   const [pageLoading, setPageLoading] = useState(true);
   const [evalElapsed, setEvalElapsed] = useState(0);
   const [evalRunning, setEvalRunning] = useState(false);
+  const [evalJobId, setEvalJobId] = useState<string | null>(null);
+  const [resultsVerdictFilter, setResultsVerdictFilter] = useState<"ALL" | "ELIGIBLE" | "NOT_ELIGIBLE" | "NEEDS_REVIEW">(
+    "ALL",
+  );
+  const [resultsSearch, setResultsSearch] = useState("");
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
     try {
-      const t = (await apiFetch(`/tenders/${tenderId}`)) as Record<string, unknown>;
+      const [t, b, r] = (await Promise.all([
+        apiFetch(`/tenders/${tenderId}`),
+        apiFetch(`/tenders/${tenderId}/bidders`),
+        apiFetch(`/tenders/${tenderId}/results`).catch(() => null),
+      ])) as [Record<string, unknown>, { bidders: { id: string; name: string }[] }, { decisions: Record<string, unknown>[]; graph: Record<string, unknown> | null } | null];
       setTender(t);
-      const b = (await apiFetch(`/tenders/${tenderId}/bidders`)) as { bidders: { id: string; name: string }[] };
-      const bl = b.bidders || [];
+      const bl = b?.bidders || [];
       setBidders(bl);
-      try {
-        const r = (await apiFetch(`/tenders/${tenderId}/results`)) as {
-          decisions: Record<string, unknown>[];
-          graph: Record<string, unknown> | null;
-        };
+      if (r) {
         setResults({
           decisions: (r.decisions || []) as Decision[],
           graph: r.graph,
         });
-      } catch {
+      } else {
         setResults(null);
       }
       const crit = ((t.criteria as unknown[]) || []).length;
@@ -70,14 +74,10 @@ export default function TenderWorkspace() {
     const fd = new FormData();
     fd.append("file", input.files[0]);
     try {
-      const j = (await fetch(`/api/v1/tenders/${tenderId}/documents`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("ts_token")}` },
-        body: fd,
-      }).then(async (r) => {
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-      })) as { ocr?: { text?: string; quality_score?: number }; criteria_extracted?: number };
+      const j = (await apiUpload(`/tenders/${tenderId}/documents`, fd)) as {
+        ocr?: { text?: string; quality_score?: number };
+        criteria_extracted?: number;
+      };
       const { criteriaCount } = await refresh();
       const ocr = j.ocr || {};
       const textLen = String(ocr.text || "").trim().length;
@@ -131,14 +131,7 @@ export default function TenderWorkspace() {
     fd.append("file", file);
     fd.append("doc_type", docType);
     try {
-      await fetch(`/api/v1/bidders/${bidderId}/documents`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("ts_token")}` },
-        body: fd,
-      }).then(async (r) => {
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-      });
+      await apiUpload(`/bidders/${bidderId}/documents`, fd);
       await refresh();
       setMsg("Bidder document OCR complete.");
     } catch (ex: unknown) {
@@ -192,7 +185,24 @@ export default function TenderWorkspace() {
         setEvalRunning(false);
         return;
       }
-      await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" });
+      const queued = (await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" })) as {
+        job_id: string;
+        status: string;
+      };
+      setEvalJobId(queued.job_id);
+      let attempts = 0;
+      while (attempts < 300) {
+        attempts += 1;
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        const st = (await apiFetch(`/tenders/${tenderId}/evaluate/jobs/${queued.job_id}`)) as {
+          status: string;
+          error?: string;
+        };
+        if (st.status === "completed") break;
+        if (st.status === "failed") {
+          throw new Error(st.error || "evaluation failed");
+        }
+      }
       await refresh({ silent: true });
       setTab("results");
       setMsgType("success");
@@ -203,6 +213,7 @@ export default function TenderWorkspace() {
       setMsg(String(ex));
     } finally {
       setEvalRunning(false);
+      setEvalJobId(null);
       setBusy(false);
     }
   }
@@ -231,6 +242,18 @@ export default function TenderWorkspace() {
     }
     return Array.from(map.entries());
   }, [results]);
+
+  const filteredDecisions = useMemo(() => {
+    const needle = resultsSearch.trim().toLowerCase();
+    return (results?.decisions || []).filter((d) => {
+      const verdict = String(d.verdict || "");
+      if (resultsVerdictFilter !== "ALL" && verdict !== resultsVerdictFilter) return false;
+      if (!needle) return true;
+      const cid = String(d.criterion_id || "").toLowerCase();
+      const reason = String(d.reasoning || d.reason || "").toLowerCase();
+      return cid.includes(needle) || reason.includes(needle);
+    });
+  }, [results, resultsVerdictFilter, resultsSearch]);
 
   return (
     <div className="shell">
@@ -450,6 +473,11 @@ export default function TenderWorkspace() {
               Evaluation in progress… elapsed {evalElapsed}s
             </p>
           )}
+          {evalRunning && evalJobId && (
+            <p className="mono muted" style={{ marginTop: 4 }}>
+              Job: {evalJobId}
+            </p>
+          )}
         </div>
       )}
 
@@ -457,6 +485,28 @@ export default function TenderWorkspace() {
         <div className="grid2">
           <div className="panel">
             <h2>Verdict matrix</h2>
+            <div className="row" style={{ marginBottom: 10 }}>
+              <select
+                value={resultsVerdictFilter}
+                onChange={(e) =>
+                  setResultsVerdictFilter(
+                    e.target.value as "ALL" | "ELIGIBLE" | "NOT_ELIGIBLE" | "NEEDS_REVIEW",
+                  )
+                }
+                style={{ maxWidth: 220 }}
+              >
+                <option value="ALL">All verdicts</option>
+                <option value="ELIGIBLE">Eligible</option>
+                <option value="NOT_ELIGIBLE">Not eligible</option>
+                <option value="NEEDS_REVIEW">Needs review</option>
+              </select>
+              <input
+                placeholder="Search criterion/reasoning"
+                value={resultsSearch}
+                onChange={(e) => setResultsSearch(e.target.value)}
+                style={{ minWidth: 260 }}
+              />
+            </div>
             <table className="table">
               <thead>
                 <tr>
@@ -485,7 +535,7 @@ export default function TenderWorkspace() {
               </tbody>
             </table>
             <h3 style={{ marginTop: 16 }}>Criterion-level detail</h3>
-            {results?.decisions?.map((d, idx) => {
+            {filteredDecisions.map((d, idx) => {
               const dd = d as Decision;
               const v = String(dd.verdict || "");
               const cls = v === "ELIGIBLE" ? "ok" : v === "NOT_ELIGIBLE" ? "bad" : "review";
