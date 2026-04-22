@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -69,6 +70,11 @@ func TriggerEvaluation(svc service.TenderService, db *sql.DB) gin.HandlerFunc {
 		evalJobsMu.Unlock()
 
 		go func() {
+			// Never use c.Request.Context() here: Go cancels it when the HTTP handler returns,
+			// which would abort the long-running evaluation immediately after 202 Accepted.
+			ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
+			defer cancel()
+
 			started := time.Now()
 			evalJobsMu.Lock()
 			job.Status = "running"
@@ -76,7 +82,7 @@ func TriggerEvaluation(svc service.TenderService, db *sql.DB) gin.HandlerFunc {
 			job.UpdatedAt = started
 			evalJobsMu.Unlock()
 
-			res, err := svc.TriggerEvaluation(c.Request.Context(), tenderID)
+			res, err := svc.TriggerEvaluation(ctx, tenderID)
 			ended := time.Now()
 			evalJobsMu.Lock()
 			defer evalJobsMu.Unlock()
@@ -116,11 +122,8 @@ func GetEvaluationJobStatus(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 			return
 		}
-		status := http.StatusOK
-		if job.Status == "failed" {
-			status = http.StatusBadGateway
-		}
-		c.JSON(status, job)
+		// Always 200 so clients can parse JSON reliably (polling must not treat failed jobs as transport errors).
+		c.JSON(http.StatusOK, job)
 	}
 }
 

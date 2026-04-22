@@ -53,7 +53,16 @@ func main() {
 	// Modern CORS configuration
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = false
-	config.AllowOrigins = strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+	var origins []string
+	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if s := strings.TrimSpace(o); s != "" {
+			origins = append(origins, s)
+		}
+	}
+	config.AllowOrigins = origins
+	if len(origins) == 0 {
+		log.Fatal("ALLOWED_ORIGINS must contain at least one non-empty origin (comma-separated)")
+	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Accept"}
 	r.Use(cors.New(config))

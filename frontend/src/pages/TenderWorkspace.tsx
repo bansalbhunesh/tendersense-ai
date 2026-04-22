@@ -191,6 +191,7 @@ export default function TenderWorkspace() {
       };
       setEvalJobId(queued.job_id);
       let attempts = 0;
+      let completed = false;
       while (attempts < 300) {
         attempts += 1;
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
@@ -198,10 +199,16 @@ export default function TenderWorkspace() {
           status: string;
           error?: string;
         };
-        if (st.status === "completed") break;
+        if (st.status === "completed") {
+          completed = true;
+          break;
+        }
         if (st.status === "failed") {
           throw new Error(st.error || "evaluation failed");
         }
+      }
+      if (!completed) {
+        throw new Error("Evaluation timed out after 5 minutes — check server logs and AI service health.");
       }
       await refresh({ silent: true });
       setTab("results");
