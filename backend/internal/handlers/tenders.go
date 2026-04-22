@@ -95,6 +95,7 @@ func GetTender(db *sql.DB) gin.HandlerFunc {
 				if err := json.Unmarshal(payload, &m); err != nil {
 					continue
 				}
+				delete(m, "id")
 				m["id"] = cid
 				b, _ := json.Marshal(m)
 				criteria = append(criteria, b)

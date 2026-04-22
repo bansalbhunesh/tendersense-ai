@@ -115,18 +115,44 @@ def extract_bool_signals(text: str, field_name: str) -> tuple[float, float]:
         if len(t) > 80 and ("certif" in t or "undertaking" in t or "compliance" in t):
             return 1.0, 0.55
         return 0.0, 0.45
+    if field_name == "blacklisting_declaration":
+        if "not blacklisted" in t or "no blacklisting" in t:
+            return 1.0, 0.82
+        if "blacklisted" in t:
+            return 0.0, 0.85
+        return 0.0, 0.45
+    if field_name == "registered_firm":
+        if "registered" in t and ("firm" in t or "company" in t):
+            return 1.0, 0.75
+        return 0.0, 0.45
+    if field_name == "msme_preference":
+        if "msme" in t or "udyam" in t:
+            return 1.0, 0.78
+        return 0.0, 0.45
+    if field_name == "pan_registration":
+        if re.search(r"\b[a-z]{5}\d{4}[a-z]\b", t, re.I):
+            return 1.0, 0.88
+        if "pan" in t:
+            return 1.0, 0.7
+        return 0.0, 0.45
     return 0.0, 0.4
 
 
 def extract_count(text: str, field_name: str) -> tuple[float, float]:
-    if field_name != "similar_projects_count":
-        return 0.0, 0.3
-    nums = [int(x) for x in re.findall(r"(\d+)\s*(?:similar|projects?|works?)", text, re.I)]
-    if nums:
-        return float(max(nums)), 0.72
-    nums2 = [int(x) for x in re.findall(r"\b(\d+)\s+projects?\b", text, re.I)]
-    if nums2:
-        return float(max(nums2)), 0.65
+    if field_name in ("similar_projects_count", "experience_years", "years_of_experience"):
+        nums = [int(x) for x in re.findall(r"(\d+)\s*(?:similar|projects?|works?)", text, re.I)]
+        if nums:
+            return float(max(nums)), 0.72
+        years = [int(x) for x in re.findall(r"(\d+)\s*(?:years?|yrs?)", text, re.I)]
+        if years:
+            return float(max(years)), 0.7
+        nums2 = [int(x) for x in re.findall(r"\b(\d+)\s+projects?\b", text, re.I)]
+        if nums2:
+            return float(max(nums2)), 0.65
+    if field_name == "technical_staff_count":
+        nums = [int(x) for x in re.findall(r"(\d+)\s*(?:technical staff|engineers?|staff)", text, re.I)]
+        if nums:
+            return float(max(nums)), 0.76
     return 0.0, 0.4
 
 
@@ -191,7 +217,15 @@ def gather_evidence(
                         doc_type=dtype,
                     )
                 )
-        elif field_name in ("gst_registration", "iso_9001", "generic_compliance"):
+        elif field_name in (
+            "gst_registration",
+            "iso_9001",
+            "generic_compliance",
+            "blacklisting_declaration",
+            "registered_firm",
+            "msme_preference",
+            "pan_registration",
+        ):
             nv, ec = extract_bool_signals(text, field_name)
             if nv > 0 or field_name == "generic_compliance":
                 evs.append(
@@ -209,8 +243,8 @@ def gather_evidence(
                         doc_type=dtype,
                     )
                 )
-        elif field_name in ("similar_projects_count", "experience_years", "years_of_experience"):
-            nv, ec = extract_count(text, "similar_projects_count")
+        elif field_name in ("similar_projects_count", "experience_years", "years_of_experience", "technical_staff_count"):
+            nv, ec = extract_count(text, field_name)
             if nv > 0:
                 evs.append(
                     Evidence(
@@ -388,6 +422,11 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
         "similar_projects_count",
         "experience_years",
         "years_of_experience",
+        "technical_staff_count",
+        "blacklisting_declaration",
+        "registered_firm",
+        "msme_preference",
+        "pan_registration",
     )
 
     if field_name in KNOWN_FIELDS:

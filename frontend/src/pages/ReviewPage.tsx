@@ -22,6 +22,15 @@ export default function ReviewPage() {
   const [verdict, setVerdict] = useState("ELIGIBLE");
   const [why, setWhy] = useState("Verified against original CA certificate on file.");
   const [msg, setMsg] = useState<string | null>(null);
+  const selectedCriterionLabel =
+    selectedItem && selectedItem.payload
+      ? String(
+          selectedItem.payload.text_raw ||
+            selectedItem.payload.field ||
+            selectedItem.payload.criterion_text ||
+            selectedItem.criterion_id,
+        )
+      : "";
 
   async function load() {
     const q = (await apiFetch("/review/queue")) as { items: Item[] };
@@ -106,6 +115,9 @@ export default function ReviewPage() {
               <div className="mono" style={{ marginBottom: 8 }}>
                 Context: {selectedItem.tender_title || selectedItem.tender_id.slice(0, 8)} · {selectedItem.bidder_name || selectedItem.bidder_id.slice(0, 8)} · criterion {selectedItem.criterion_id}
               </div>
+              <div className="muted" style={{ marginBottom: 8 }}>
+                Criterion: {selectedCriterionLabel}
+              </div>
               <pre className="mono" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
                 {JSON.stringify(selectedItem.payload, null, 2)}
               </pre>
@@ -113,13 +125,18 @@ export default function ReviewPage() {
           )}
           <form onSubmit={submitOverride}>
             <label>Tender ID</label>
-            <input value={tenderId} onChange={(e) => setTenderId(e.target.value)} required />
+            <input value={tenderId} onChange={(e) => setTenderId(e.target.value)} required readOnly={!!selectedItem} />
             <div style={{ height: 10 }} />
             <label>Bidder ID</label>
-            <input value={bidderId} onChange={(e) => setBidderId(e.target.value)} required />
+            <input value={bidderId} onChange={(e) => setBidderId(e.target.value)} required readOnly={!!selectedItem} />
             <div style={{ height: 10 }} />
             <label>Criterion ID</label>
-            <input value={criterionId} onChange={(e) => setCriterionId(e.target.value)} required />
+            <input value={criterionId} onChange={(e) => setCriterionId(e.target.value)} required readOnly={!!selectedItem} />
+            {selectedItem && (
+              <p className="muted" style={{ marginTop: 6 }}>
+                IDs are locked to the selected queue item to prevent accidental overrides.
+              </p>
+            )}
             <div style={{ height: 10 }} />
             <label>New verdict</label>
             <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
@@ -134,6 +151,21 @@ export default function ReviewPage() {
             <button className="primary" type="submit">
               Record override
             </button>
+            {selectedItem && (
+              <button
+                className="ghost"
+                type="button"
+                style={{ marginLeft: 8 }}
+                onClick={() => {
+                  setSelectedItem(null);
+                  setTenderId("");
+                  setBidderId("");
+                  setCriterionId("");
+                }}
+              >
+                Clear selection
+              </button>
+            )}
           </form>
           {msg && <p className="muted" style={{ marginTop: 12, color: "#8fdfff" }}>{msg}</p>}
         </div>
