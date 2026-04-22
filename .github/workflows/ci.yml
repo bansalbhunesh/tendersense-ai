@@ -45,3 +45,76 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: tendersense
+          POSTGRES_PASSWORD: tendersense
+          POSTGRES_DB: tendersense
+        options: >-
+          --health-cmd "pg_isready -U tendersense -d tendersense"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://tendersense:tendersense@localhost:5432/tendersense?sslmode=disable
+      JWT_SECRET: ci-jwt-secret-must-be-at-least-32-characters-long
+      ALLOWED_ORIGINS: http://127.0.0.1:4173
+      DATA_DIR: /tmp/tendersense-e2e-uploads
+      GIN_MODE: release
+      PORT: "8080"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Prepare upload dir
+        run: mkdir -p "$DATA_DIR"
+      - name: Build backend
+        working-directory: backend
+        run: go build -o /tmp/tendersense-api .
+      - name: Start API
+        run: |
+          nohup /tmp/tendersense-api > /tmp/tendersense-api.log 2>&1 &
+          echo $! > /tmp/tendersense-api.pid
+          for i in $(seq 1 60); do
+            curl -fsS "http://127.0.0.1:8080/health" && exit 0
+            sleep 1
+          done
+          echo "backend failed to become healthy"
+          cat /tmp/tendersense-api.log || true
+          exit 1
+      - name: Install frontend + Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Start preview
+        working-directory: frontend
+        run: |
+          nohup npm run preview:e2e > /tmp/vite-preview.log 2>&1 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 60); do
+            curl -fsS "http://127.0.0.1:4173/" && exit 0
+            sleep 1
+          done
+          echo "preview failed to become ready"
+          cat /tmp/vite-preview.log || true
+          exit 1
+      - name: Run Playwright smoke
+        working-directory: frontend
+        run: npx playwright test

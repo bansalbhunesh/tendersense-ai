@@ -73,12 +73,12 @@ export default function Dashboard() {
           <h2>New tender</h2>
           <form onSubmit={create}>
             <label>Title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <input data-testid="tender-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
             <div style={{ height: 10 }} />
             <label>Description</label>
             <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
             <div style={{ height: 12 }} />
-            <button className="primary" type="submit">
+            <button data-testid="tender-create" className="primary" type="submit">
               Create tender workspace
             </button>
           </form>

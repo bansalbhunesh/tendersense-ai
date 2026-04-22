@@ -278,7 +278,12 @@ export default function TenderWorkspace() {
 
       <div className="tabs">
         {(["docs", "bidders", "run", "results"] as const).map((t) => (
-          <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+          <button
+            key={t}
+            data-testid={`tab-${t}`}
+            className={tab === t ? "active" : ""}
+            onClick={() => setTab(t)}
+          >
             {t === "docs" && "Tender documents"}
             {t === "bidders" && "Bidders & evidence"}
             {t === "run" && "Run evaluation"}
@@ -309,7 +314,9 @@ export default function TenderWorkspace() {
           }}
         >
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <span className="mono">{msg}</span>
+            <span className="mono" data-testid="workspace-msg">
+              {msg}
+            </span>
             <button className="ghost" type="button" onClick={() => setMsg(null)}>
               Dismiss
             </button>
@@ -472,7 +479,7 @@ export default function TenderWorkspace() {
           <p className="muted" style={{ marginTop: 8 }}>
             Criteria loaded: {criteriaList.length} · Bidders: {bidders.length}
           </p>
-          <button className="primary" disabled={busy} onClick={runEval}>
+          <button data-testid="run-evaluate" className="primary" disabled={busy} onClick={runEval}>
             {evalRunning ? "Running…" : busy ? "Checking prerequisites…" : "Run decision engine"}
           </button>
           {evalRunning && (

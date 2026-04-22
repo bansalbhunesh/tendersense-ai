@@ -54,10 +54,16 @@ export default function AuthPage() {
           </p>
           <form style={{ marginTop: 24 }} onSubmit={(e) => e.preventDefault()}>
             <label>Department Email</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+            <input
+              data-testid="auth-email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+            />
             <div style={{ height: 16 }} />
             <label>Password</label>
             <input
+              data-testid="auth-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -69,10 +75,10 @@ export default function AuthPage() {
               </p>
             )}
             <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
-              <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onLogin}>
+              <button data-testid="auth-login" className="primary" style={{ flex: 1 }} disabled={busy} onClick={onLogin}>
                 Sign in
               </button>
-              <button className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
+              <button data-testid="auth-register" className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
                 Register
               </button>
             </div>
