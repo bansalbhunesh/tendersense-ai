@@ -7,6 +7,8 @@ type Item = {
   tender_id: string;
   bidder_id: string;
   criterion_id: string;
+  tender_title?: string;
+  bidder_name?: string;
   payload: Record<string, unknown>;
 };
 
@@ -71,6 +73,8 @@ export default function ReviewPage() {
           {items.length === 0 && <p className="muted">No open review items.</p>}
           {items.map((it) => (
             <div key={it.id} className="panel" style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 700 }}>{it.tender_title || `Tender ${it.tender_id.slice(0, 8)}…`}</div>
+              <div className="muted">Bidder: {it.bidder_name || it.bidder_id.slice(0, 8)}</div>
               <div className="mono">tender {it.tender_id.slice(0, 8)}…</div>
               <div className="mono">bidder {it.bidder_id.slice(0, 8)}…</div>
               <div className="mono">criterion {it.criterion_id}</div>
@@ -100,7 +104,7 @@ export default function ReviewPage() {
           {selectedItem && (
             <div className="panel" style={{ marginBottom: 12 }}>
               <div className="mono" style={{ marginBottom: 8 }}>
-                Context: bidder {selectedItem.bidder_id.slice(0, 8)}… criterion {selectedItem.criterion_id}
+                Context: {selectedItem.tender_title || selectedItem.tender_id.slice(0, 8)} · {selectedItem.bidder_name || selectedItem.bidder_id.slice(0, 8)} · criterion {selectedItem.criterion_id}
               </div>
               <pre className="mono" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
                 {JSON.stringify(selectedItem.payload, null, 2)}

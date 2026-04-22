@@ -443,7 +443,7 @@ export default function TenderWorkspace() {
             Criteria loaded: {criteriaList.length} · Bidders: {bidders.length}
           </p>
           <button className="primary" disabled={busy} onClick={runEval}>
-            {busy ? "Running…" : "Run decision engine"}
+            {evalRunning ? "Running…" : busy ? "Checking prerequisites…" : "Run decision engine"}
           </button>
           {evalRunning && (
             <p className="muted" style={{ marginTop: 8 }}>
@@ -475,9 +475,6 @@ export default function TenderWorkspace() {
                     <tr key={bid}>
                       <td title={bid}>
                         <span style={{ fontWeight: 600 }}>{bidderLabel}</span>
-                        <div className="mono muted" style={{ fontSize: "0.75rem" }}>
-                          {bid.slice(0, 8)}…
-                        </div>
                       </td>
                       <td>
                         {eligible} eligible · {notEligible} not eligible · {review} need review · {vals.length} criteria

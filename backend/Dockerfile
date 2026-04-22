@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /tendersense-api .
 
 FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
 COPY --from=build /tendersense-api .
 EXPOSE 8080

@@ -13,6 +13,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+import pdfplumber
 from PIL import Image
 
 
@@ -33,8 +34,6 @@ class OCRResult:
 
 
 def _read_pdf_text(path: str) -> str:
-    import pdfplumber
-
     chunks: list[str] = []
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -107,13 +106,13 @@ def _paddle_ocr_image(path: str) -> tuple[str, float, list[dict[str, Any]]]:
     return text, mean_conf, boxes
 
 
-def _tesseract_image(path: str) -> tuple[str, float]:
+def _tesseract_image(path: str, preprocessed: bool = False) -> tuple[str, float]:
     import pytesseract
 
     im = cv2.imread(path)
     if im is None:
         return "", 0.0
-    gray = _preprocess(im)
+    gray = im if preprocessed else _preprocess(im)
     fd, prep_path = tempfile.mkstemp(suffix=".prep.png")
     os.close(fd)
     cv2.imwrite(prep_path, gray)
@@ -136,7 +135,6 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
     pages: list[OCRPage] = []
     all_text: list[str] = []
     confs: list[float] = []
-    import pdfplumber
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages[:max_pages], start=1):
             try:
@@ -153,7 +151,7 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
                 pt, conf, boxes = _paddle_ocr_image(prep_tmp_path)
                 engine = "paddleocr"
                 if not pt.strip():
-                    pt, conf = _tesseract_image(prep_tmp_path)
+                    pt, conf = _tesseract_image(prep_tmp_path, preprocessed=True)
                     boxes = []
                     engine = "tesseract"
                 pt = redact_noise(pt or "")

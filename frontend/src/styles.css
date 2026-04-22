@@ -232,22 +232,6 @@ button:disabled {
 .badge.bad { background: rgba(239, 68, 68, 0.1); color: var(--bad); border: 1px solid rgba(239, 68, 68, 0.2); }
 .badge.review { background: rgba(59, 130, 246, 0.1); color: var(--review); border: 1px solid rgba(59, 130, 246, 0.2); }
 
-.graph-node {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.3);
-  transition: all 0.3s;
-}
-
-.graph-node.criterion {
-  border-left: 4px solid var(--saffron);
-}
-
-.graph-node.verdict {
-  border-left: 4px solid var(--review);
-}
-
 .mono {
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 0.85rem;

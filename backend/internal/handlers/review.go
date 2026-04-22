@@ -18,9 +18,10 @@ func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")
 		rows, err := db.Query(`
-			SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at 
+			SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at, t.title, b.name
 			FROM review_queue rq
 			JOIN tenders t ON rq.tender_id = t.id
+			JOIN bidders b ON rq.bidder_id = b.id
 			WHERE rq.status='open' AND t.owner_id=$1
 			ORDER BY rq.created_at`, uid)
 		if err != nil {
@@ -33,13 +34,16 @@ func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 			var id, tid, bid, cid string
 			var payload []byte
 			var created interface{}
-			if err := rows.Scan(&id, &tid, &bid, &cid, &payload, &created); err != nil {
+			var tenderTitle, bidderName string
+			if err := rows.Scan(&id, &tid, &bid, &cid, &payload, &created, &tenderTitle, &bidderName); err != nil {
 				continue
 			}
 			var p map[string]any
 			_ = json.Unmarshal(payload, &p)
 			items = append(items, map[string]any{
-				"id": id, "tender_id": tid, "bidder_id": bid, "criterion_id": cid, "payload": p, "created_at": created,
+				"id": id, "tender_id": tid, "bidder_id": bid, "criterion_id": cid,
+				"tender_title": tenderTitle, "bidder_name": bidderName,
+				"payload": p, "created_at": created,
 			})
 		}
 		if err := rows.Err(); err != nil {

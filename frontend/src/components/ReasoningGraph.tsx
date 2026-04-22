@@ -18,8 +18,8 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
 
   const criteria = nodes.filter((n) => n.type === "criterion");
   const verdicts = nodes.filter((n) => n.type !== "criterion");
-  const leftW = 320;
-  const rightW = 320;
+  const leftW = 340;
+  const rightW = 340;
   const rowH = 120;
   const width = leftW + rightW + 80;
   const edgeFromByTo = new Map<string, string>();
@@ -63,18 +63,28 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
         Directed view: criteria (left) linking to bidder verdicts (right) with confidence.
       </p>
       <div style={{ overflow: "auto", maxHeight: 620 }}>
-        <svg width={width} height={height} style={{ display: "block", marginBottom: 12 }}>
+        <svg
+          width="100%"
+          viewBox={`0 0 ${width} ${height}`}
+          height={Math.min(height, 620)}
+          preserveAspectRatio="xMinYMin meet"
+          style={{ display: "block", marginBottom: 12 }}
+        >
           {edges.map((e, i) => {
             const from = criterionPos.get(e.from);
             const to = verdictPos.get(e.to);
             if (!from || !to) return null;
+            const x1 = from.x + leftW - 16;
+            const y1 = from.y + 28;
+            const x2 = to.x + 16;
+            const y2 = to.y + 28;
+            const mid = x1 + (x2 - x1) * 0.55;
+            const d = `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
             return (
-              <line
+              <path
                 key={`${e.from}-${e.to}-${i}`}
-                x1={from.x + leftW - 16}
-                y1={from.y + 28}
-                x2={to.x + 16}
-                y2={to.y + 28}
+                d={d}
+                fill="none"
                 stroke="rgba(148,163,184,0.55)"
                 strokeWidth="1.5"
               />
