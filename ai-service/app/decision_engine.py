@@ -347,7 +347,7 @@ Return ONLY a JSON object:
     try:
         msg = client.messages.create(
             model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=1024,
+            max_tokens=int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "2200")),
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )

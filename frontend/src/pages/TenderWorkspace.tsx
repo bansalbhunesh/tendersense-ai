@@ -24,7 +24,9 @@ export default function TenderWorkspace() {
   );
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgType, setMsgType] = useState<"info" | "success" | "warning" | "error">("info");
   const [pageLoading, setPageLoading] = useState(true);
+  const [evalElapsed, setEvalElapsed] = useState(0);
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
@@ -63,6 +65,7 @@ export default function TenderWorkspace() {
     if (!input.files?.[0]) return;
     setBusy(true);
     setMsg(null);
+    setMsgType("info");
     const fd = new FormData();
     fd.append("file", input.files[0]);
     try {
@@ -80,15 +83,18 @@ export default function TenderWorkspace() {
       const qs = Number(ocr.quality_score ?? 0);
       const extracted = Number(j.criteria_extracted ?? 0);
       if (textLen < 40 || qs < 0.12) {
+        setMsgType("warning");
         setMsg(
           `Saved, but OCR text is sparse (${textLen} chars, quality ${qs.toFixed(2)}). Criteria in workspace: ${criteriaCount}. Try a text-based PDF or higher-resolution scans.`,
         );
       } else {
+        setMsgType("success");
         setMsg(
           `Processed: ${extracted} new criteria rows from this upload; ${criteriaCount} total criteria in workspace (OCR quality ${qs.toFixed(2)}).`,
         );
       }
     } catch (ex: unknown) {
+      setMsgType("error");
       setMsg(String(ex));
     } finally {
       setBusy(false);
@@ -99,6 +105,7 @@ export default function TenderWorkspace() {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+    setMsgType("info");
     try {
       await apiFetch(`/tenders/${tenderId}/bidders`, {
         method: "POST",
@@ -108,6 +115,7 @@ export default function TenderWorkspace() {
       setBname(`Bidder ${bidders.length + 2}`);
       await refresh();
     } catch (ex: unknown) {
+      setMsgType("error");
       setMsg(String(ex));
     } finally {
       setBusy(false);
@@ -117,6 +125,7 @@ export default function TenderWorkspace() {
   async function uploadBidderDoc(bidderId: string, file: File, docType: string) {
     setBusy(true);
     setMsg(null);
+    setMsgType("info");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("doc_type", docType);
@@ -132,6 +141,7 @@ export default function TenderWorkspace() {
       await refresh();
       setMsg("Bidder document OCR complete.");
     } catch (ex: unknown) {
+      setMsgType("error");
       setMsg(String(ex));
     } finally {
       setBusy(false);
@@ -161,14 +171,18 @@ export default function TenderWorkspace() {
   async function runEval() {
     setBusy(true);
     setMsg(null);
+    setMsgType("info");
+    setEvalElapsed(0);
     try {
       const { criteriaCount, bidderCount } = await refresh({ silent: true });
       if (criteriaCount === 0) {
+        setMsgType("warning");
         setMsg("No criteria in this tender yet. Upload a tender document with extractable text first.");
         setTab("docs");
         return;
       }
       if (bidderCount === 0) {
+        setMsgType("warning");
         setMsg("Register at least one bidder before running evaluation.");
         setTab("bidders");
         return;
@@ -176,13 +190,21 @@ export default function TenderWorkspace() {
       await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" });
       await refresh({ silent: true });
       setTab("results");
+      setMsgType("success");
       setMsg("Evaluation finished — review graph and per-criterion verdicts.");
     } catch (ex: unknown) {
+      setMsgType("error");
       setMsg(String(ex));
     } finally {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!busy) return;
+    const t = window.setInterval(() => setEvalElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [busy]);
 
   const matrix = useMemo(() => {
     if (!results?.decisions?.length) return [];
@@ -229,7 +251,20 @@ export default function TenderWorkspace() {
       )}
 
       {msg && (
-        <div className="panel" style={{ marginBottom: 14, borderColor: "rgba(255,153,51,0.35)" }}>
+        <div
+          className="panel"
+          style={{
+            marginBottom: 14,
+            borderColor:
+              msgType === "error"
+                ? "rgba(239,68,68,0.45)"
+                : msgType === "success"
+                  ? "rgba(16,185,129,0.45)"
+                  : msgType === "warning"
+                    ? "rgba(245,158,11,0.45)"
+                    : "rgba(59,130,246,0.35)",
+          }}
+        >
           <span className="mono">{msg}</span>
         </div>
       )}
@@ -392,6 +427,11 @@ export default function TenderWorkspace() {
           <button className="primary" disabled={busy} onClick={runEval}>
             {busy ? "Running…" : "Run decision engine"}
           </button>
+          {busy && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              Evaluation in progress… elapsed {evalElapsed}s
+            </p>
+          )}
         </div>
       )}
 
@@ -411,6 +451,7 @@ export default function TenderWorkspace() {
                   const vals = Object.values(byC);
                   const eligible = vals.filter((v) => v.verdict === "ELIGIBLE").length;
                   const review = vals.filter((v) => v.verdict === "NEEDS_REVIEW").length;
+                  const notEligible = vals.filter((v) => v.verdict === "NOT_ELIGIBLE").length;
                   const bidderLabel = bidderNameMap.get(bid) || `${bid.slice(0, 8)}…`;
                   return (
                     <tr key={bid}>
@@ -421,7 +462,7 @@ export default function TenderWorkspace() {
                         </div>
                       </td>
                       <td>
-                        {eligible} eligible · {review} need review · {vals.length} criteria
+                        {eligible} eligible · {notEligible} not eligible · {review} need review · {vals.length} criteria
                       </td>
                     </tr>
                   );

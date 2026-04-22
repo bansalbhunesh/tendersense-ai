@@ -22,19 +22,47 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
   const rightW = 320;
   const rowH = 120;
   const width = leftW + rightW + 80;
-  const height = Math.max(criteria.length, verdicts.length, 1) * rowH + 40;
+  const edgeFromByTo = new Map<string, string>();
+  edges.forEach((e) => edgeFromByTo.set(e.to, e.from));
+  const verdictsByCriterion = new Map<string, Node[]>();
+  verdicts.forEach((v) => {
+    const c = edgeFromByTo.get(v.id);
+    if (!c) return;
+    const arr = verdictsByCriterion.get(c) || [];
+    arr.push(v);
+    verdictsByCriterion.set(c, arr);
+  });
+  const rows = Math.max(
+    1,
+    criteria.reduce((acc, c) => {
+      const n = (verdictsByCriterion.get(c.id) || []).length;
+      return acc + Math.max(1, n);
+    }, 0),
+  );
+  const height = rows * rowH + 40;
   const yFor = (idx: number) => 30 + idx * rowH + 40;
   const criterionPos = new Map<string, { x: number; y: number }>();
   const verdictPos = new Map<string, { x: number; y: number }>();
-  criteria.forEach((c, i) => criterionPos.set(c.id, { x: 20, y: yFor(i) }));
-  verdicts.forEach((v, i) => verdictPos.set(v.id, { x: leftW + 60, y: yFor(i) }));
+  let row = 0;
+  criteria.forEach((c) => {
+    const list = verdictsByCriterion.get(c.id) || [];
+    const span = Math.max(1, list.length);
+    const center = row + Math.floor((span - 1) / 2);
+    criterionPos.set(c.id, { x: 20, y: yFor(center) });
+    if (list.length === 0) {
+      row += 1;
+      return;
+    }
+    list.forEach((v, i) => verdictPos.set(v.id, { x: leftW + 60, y: yFor(row + i) }));
+    row += span;
+  });
 
   return (
     <div>
       <p className="muted" style={{ marginBottom: 12 }}>
         Directed view: criteria (left) linking to bidder verdicts (right) with confidence.
       </p>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflow: "auto", maxHeight: 620 }}>
         <svg width={width} height={height} style={{ display: "block", marginBottom: 12 }}>
           {edges.map((e, i) => {
             const from = criterionPos.get(e.from);

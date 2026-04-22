@@ -99,7 +99,10 @@ func GetTender(db *sql.DB) gin.HandlerFunc {
 				b, _ := json.Marshal(m)
 				criteria = append(criteria, b)
 			}
-			_ = rows.Err()
+			if err := rows.Err(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"id": id, "title": title, "description": desc, "status": status, "created_at": created,
@@ -161,6 +164,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		extRes := struct {
 			Criteria []map[string]any `json:"criteria"`
 		}{}
+		insertedCount := 0
 		if ocrRes.Text != "" {
 			_ = util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes)
 			for _, cr := range extRes.Criteria {
@@ -187,11 +191,13 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 				if err != nil {
 					continue
 				}
-				_, _ = db.Exec(`INSERT INTO criteria (id, tender_id, payload) VALUES ($1,$2,$3::jsonb)`, cid, tenderID, string(b))
+				if _, err := db.Exec(`INSERT INTO criteria (id, tender_id, payload) VALUES ($1,$2,$3::jsonb)`, cid, tenderID, string(b)); err == nil {
+					insertedCount++
+				}
 			}
 		}
 
-		c.JSON(http.StatusCreated, gin.H{"document_id": docID, "ocr": ocrRes, "criteria_extracted": len(extRes.Criteria)})
+		c.JSON(http.StatusCreated, gin.H{"document_id": docID, "ocr": ocrRes, "criteria_extracted": insertedCount})
 	}
 }
 

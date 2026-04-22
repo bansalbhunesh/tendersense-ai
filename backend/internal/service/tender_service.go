@@ -67,7 +67,7 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 	for _, bid := range bidderIDs {
 		docs, err := s.repo.GetBidderDocuments(ctx, bid)
 		if err != nil {
-			continue // Log this in production
+			return nil, fmt.Errorf("fetch bidder documents (%s): %w", bid, err)
 		}
 		biddersPayload = append(biddersPayload, map[string]any{
 			"bidder_id": bid,
@@ -86,6 +86,35 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		return nil, fmt.Errorf("ai service: %w", err)
 	}
 
+	// Pre-validate and sanitize AI output before starting transaction.
+	validDecisions := make([]map[string]any, 0, len(aiOut.Decisions))
+	for _, d := range aiOut.Decisions {
+		bid, _ := d["bidder_id"].(string)
+		if _, perr := uuid.Parse(bid); perr != nil {
+			continue
+		}
+		crid, _ := d["criterion_id"].(string)
+		if crid == "" {
+			continue
+		}
+		validDecisions = append(validDecisions, d)
+	}
+	if len(validDecisions) == 0 {
+		return nil, fmt.Errorf("evaluation returned no valid decisions")
+	}
+	validReviewItems := make([]map[string]any, 0, len(aiOut.ReviewItems))
+	for _, r := range aiOut.ReviewItems {
+		bid, _ := r["bidder_id"].(string)
+		if _, perr := uuid.Parse(bid); perr != nil {
+			continue
+		}
+		crid, _ := r["criterion_id"].(string)
+		if crid == "" {
+			continue
+		}
+		validReviewItems = append(validReviewItems, r)
+	}
+
 	// 4. Save results in Transaction
 	eid := uuid.NewString()
 	err = s.repo.WithTransaction(ctx, func(tx *sql.Tx) error {
@@ -95,15 +124,7 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		}
 
 		// Save decisions (skip rows with invalid bidder UUIDs or empty criterion_id)
-		for _, d := range aiOut.Decisions {
-			bid, _ := d["bidder_id"].(string)
-			if _, perr := uuid.Parse(bid); perr != nil {
-				continue
-			}
-			crid, _ := d["criterion_id"].(string)
-			if crid == "" {
-				continue
-			}
+		for _, d := range validDecisions {
 			payload, _ := json.Marshal(d)
 			sum := util.ChecksumJSON(json.RawMessage(payload))
 			if err := s.repo.SaveDecision(ctx, tx, d, tenderID, sum); err != nil {
@@ -117,15 +138,7 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 			return err
 		}
 
-		for _, r := range aiOut.ReviewItems {
-			bid, _ := r["bidder_id"].(string)
-			if _, perr := uuid.Parse(bid); perr != nil {
-				continue
-			}
-			crid, _ := r["criterion_id"].(string)
-			if crid == "" {
-				continue
-			}
+		for _, r := range validReviewItems {
 			rid := uuid.NewString()
 			if err := s.repo.SaveReviewItem(ctx, tx, rid, tenderID, r); err != nil {
 				return err
@@ -138,7 +151,7 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		return nil, fmt.Errorf("db transaction: %w", err)
 	}
 
-	n := len(aiOut.Decisions)
+	n := len(validDecisions)
 	return &EvaluationResult{
 		ID:             eid,
 		Decisions:      n,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -162,7 +163,13 @@ func (r *sqlTenderRepository) SaveDecision(ctx context.Context, tx *sql.Tx, d ma
 		d["id"] = id
 	}
 	bid, _ := d["bidder_id"].(string)
+	if _, err := uuid.Parse(bid); err != nil {
+		return fmt.Errorf("invalid bidder_id uuid: %w", err)
+	}
 	crid, _ := d["criterion_id"].(string)
+	if strings.TrimSpace(crid) == "" {
+		return fmt.Errorf("empty criterion_id")
+	}
 	payload, _ := json.Marshal(d)
 
 	_, err := tx.ExecContext(ctx,

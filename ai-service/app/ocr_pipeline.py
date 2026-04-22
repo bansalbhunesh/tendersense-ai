@@ -134,11 +134,12 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
     """OCR each PDF page as image when native text extraction is empty."""
     import pdfplumber
 
+    max_pages = int(os.getenv("OCR_MAX_PDF_PAGES", "40"))
     pages: list[OCRPage] = []
     all_text: list[str] = []
     confs: list[float] = []
     with pdfplumber.open(path) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
+        for i, page in enumerate(pdf.pages[:max_pages], start=1):
             try:
                 pil = page.to_image(resolution=200).original.convert("RGB")
                 arr = np.array(pil)
@@ -147,12 +148,16 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
                 continue
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
                 tmp_path = tf.name
+            with tempfile.NamedTemporaryFile(suffix=".prep.png", delete=False) as tf2:
+                prep_tmp_path = tf2.name
             try:
                 cv2.imwrite(tmp_path, bgr)
-                pt, conf, boxes = _paddle_ocr_image(tmp_path)
+                prep = _preprocess(bgr)
+                cv2.imwrite(prep_tmp_path, prep)
+                pt, conf, boxes = _paddle_ocr_image(prep_tmp_path)
                 engine = "paddleocr"
                 if not pt.strip():
-                    pt, conf = _tesseract_image(tmp_path)
+                    pt, conf = _tesseract_image(prep_tmp_path)
                     boxes = []
                     engine = "tesseract"
                 pt = redact_noise(pt or "")
@@ -163,6 +168,8 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
             finally:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
+                if os.path.exists(prep_tmp_path):
+                    os.remove(prep_tmp_path)
     text = "\n".join(x for x in all_text if x.strip())
     q = min(0.95, max(0.2, (sum(confs) / len(confs)) if confs else 0.2))
     return OCRResult(text=text, quality_score=q, engine="pdf_raster_ocr", pages=pages)
