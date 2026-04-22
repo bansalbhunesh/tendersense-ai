@@ -164,7 +164,9 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 			err = db.QueryRow(`SELECT status FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&evalStatus)
 			if err == nil && evalStatus != "" {
 				state = evalStatus
-			} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			} else if errors.Is(err, sql.ErrNoRows) {
+				state = "none"
+			} else if err != nil {
 				state = "unknown"
 			}
 		}
