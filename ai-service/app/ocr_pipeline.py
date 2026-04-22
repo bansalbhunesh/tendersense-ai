@@ -132,12 +132,11 @@ def _tesseract_image(path: str) -> tuple[str, float]:
 
 def _ocr_scanned_pdf(path: str) -> OCRResult:
     """OCR each PDF page as image when native text extraction is empty."""
-    import pdfplumber
-
     max_pages = int(os.getenv("OCR_MAX_PDF_PAGES", "40"))
     pages: list[OCRPage] = []
     all_text: list[str] = []
     confs: list[float] = []
+    import pdfplumber
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages[:max_pages], start=1):
             try:
@@ -146,12 +145,9 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
                 bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             except Exception:
                 continue
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-                tmp_path = tf.name
             with tempfile.NamedTemporaryFile(suffix=".prep.png", delete=False) as tf2:
                 prep_tmp_path = tf2.name
             try:
-                cv2.imwrite(tmp_path, bgr)
                 prep = _preprocess(bgr)
                 cv2.imwrite(prep_tmp_path, prep)
                 pt, conf, boxes = _paddle_ocr_image(prep_tmp_path)
@@ -166,8 +162,6 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
                     all_text.append(pt)
                 confs.append(conf if conf > 0 else 0.35)
             finally:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
                 if os.path.exists(prep_tmp_path):
                     os.remove(prep_tmp_path)
     text = "\n".join(x for x in all_text if x.strip())

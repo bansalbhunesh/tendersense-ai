@@ -27,6 +27,7 @@ export default function TenderWorkspace() {
   const [msgType, setMsgType] = useState<"info" | "success" | "warning" | "error">("info");
   const [pageLoading, setPageLoading] = useState(true);
   const [evalElapsed, setEvalElapsed] = useState(0);
+  const [evalRunning, setEvalRunning] = useState(false);
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
@@ -169,42 +170,54 @@ export default function TenderWorkspace() {
   }, [criteriaList]);
 
   async function runEval() {
+    const startedAt = Date.now();
     setBusy(true);
     setMsg(null);
     setMsgType("info");
     setEvalElapsed(0);
+    setEvalRunning(true);
     try {
       const { criteriaCount, bidderCount } = await refresh({ silent: true });
       if (criteriaCount === 0) {
         setMsgType("warning");
         setMsg("No criteria in this tender yet. Upload a tender document with extractable text first.");
         setTab("docs");
+        setEvalRunning(false);
         return;
       }
       if (bidderCount === 0) {
         setMsgType("warning");
         setMsg("Register at least one bidder before running evaluation.");
         setTab("bidders");
+        setEvalRunning(false);
         return;
       }
       await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" });
       await refresh({ silent: true });
       setTab("results");
       setMsgType("success");
-      setMsg("Evaluation finished — review graph and per-criterion verdicts.");
+      const took = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      setMsg(`Evaluation finished in ${took}s — review graph and per-criterion verdicts.`);
     } catch (ex: unknown) {
       setMsgType("error");
       setMsg(String(ex));
     } finally {
+      setEvalRunning(false);
       setBusy(false);
     }
   }
 
   useEffect(() => {
-    if (!busy) return;
+    if (!evalRunning) return;
     const t = window.setInterval(() => setEvalElapsed((s) => s + 1), 1000);
     return () => window.clearInterval(t);
-  }, [busy]);
+  }, [evalRunning]);
+
+  useEffect(() => {
+    if (!msg) return;
+    const t = window.setTimeout(() => setMsg(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [msg]);
 
   const matrix = useMemo(() => {
     if (!results?.decisions?.length) return [];
@@ -265,7 +278,12 @@ export default function TenderWorkspace() {
                     : "rgba(59,130,246,0.35)",
           }}
         >
-          <span className="mono">{msg}</span>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <span className="mono">{msg}</span>
+            <button className="ghost" type="button" onClick={() => setMsg(null)}>
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -427,7 +445,7 @@ export default function TenderWorkspace() {
           <button className="primary" disabled={busy} onClick={runEval}>
             {busy ? "Running…" : "Run decision engine"}
           </button>
-          {busy && (
+          {evalRunning && (
             <p className="muted" style={{ marginTop: 8 }}>
               Evaluation in progress… elapsed {evalElapsed}s
             </p>

@@ -188,7 +188,13 @@ func (r *sqlTenderRepository) SaveEvaluation(ctx context.Context, tx *sql.Tx, id
 func (r *sqlTenderRepository) SaveReviewItem(ctx context.Context, tx *sql.Tx, id, tenderID string, payload map[string]any) error {
 	p, _ := json.Marshal(payload)
 	bid, _ := payload["bidder_id"].(string)
+	if _, err := uuid.Parse(bid); err != nil {
+		return fmt.Errorf("invalid review bidder_id uuid: %w", err)
+	}
 	crid, _ := payload["criterion_id"].(string)
+	if strings.TrimSpace(crid) == "" {
+		return fmt.Errorf("empty review criterion_id")
+	}
 
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO review_queue (id, tender_id, bidder_id, criterion_id, status, payload) VALUES ($1,$2::uuid,$3::uuid,$4,'open',$5::jsonb)`,

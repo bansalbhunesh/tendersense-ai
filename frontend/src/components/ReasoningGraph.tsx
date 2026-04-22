@@ -84,6 +84,7 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
             const p = criterionPos.get(n.id)!;
             return (
               <g key={n.id}>
+                <title>{n.label}</title>
                 <rect x={p.x} y={p.y} rx="10" width={leftW} height="56" fill="rgba(17,24,39,0.85)" stroke="rgba(245,158,11,0.45)" />
                 <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
                   CRITERION
@@ -96,13 +97,23 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
           })}
           {verdicts.map((n) => {
             const p = verdictPos.get(n.id)!;
+            const verdict = String(n.label || "").toUpperCase();
+            const stroke =
+              verdict === "ELIGIBLE"
+                ? "rgba(16,185,129,0.55)"
+                : verdict === "NOT_ELIGIBLE"
+                  ? "rgba(239,68,68,0.55)"
+                  : "rgba(59,130,246,0.55)";
+            const confidenceColor =
+              verdict === "ELIGIBLE" ? "#6ee7b7" : verdict === "NOT_ELIGIBLE" ? "#fda4af" : "#93c5fd";
             return (
               <g key={n.id}>
-                <rect x={p.x} y={p.y} rx="10" width={rightW} height="56" fill="rgba(17,24,39,0.85)" stroke="rgba(59,130,246,0.45)" />
+                <title>{`${n.label} • ${n.bidder_id ?? ""}`}</title>
+                <rect x={p.x} y={p.y} rx="10" width={rightW} height="56" fill="rgba(17,24,39,0.85)" stroke={stroke} />
                 <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
                   {n.label}
                 </text>
-                <text x={p.x + 10} y={p.y + 40} fill="#93c5fd" fontSize="11">
+                <text x={p.x + 10} y={p.y + 40} fill={confidenceColor} fontSize="11">
                   {n.bidder_id ? `bidder ${n.bidder_id.slice(0, 8)}...` : ""}
                   {typeof n.confidence === "number" ? `  conf ${(n.confidence * 100).toFixed(0)}%` : ""}
                 </text>

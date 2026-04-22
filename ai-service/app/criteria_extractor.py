@@ -199,9 +199,9 @@ Return ONLY a JSON object with this structure:
       "unit": "INR|bool|count|percent",
       "mandatory": true,
       "source_priority": ["doc_type1", "doc_type2"],
-                "semantic_ambiguity_score": 0.0-1.0,
-                "depends_on": "criterion_id_or_null",
-                "temporal": {"type":"any_of_last_n_years|last_n_years|null", "n":3}
+      "semantic_ambiguity_score": 0.0-1.0,
+      "depends_on": "criterion_id_or_null",
+      "temporal": {"type":"any_of_last_n_years|last_n_years|null", "n":3}
     }}
   ]
 }}
@@ -212,7 +212,7 @@ TENDER TEXT:
     try:
         msg = client.messages.create(
             model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=4096,
+            max_tokens=int(os.getenv("CRITERIA_MAX_OUTPUT_TOKENS", "4096")),
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -239,10 +239,3 @@ TENDER TEXT:
     except Exception as e:
         logger.exception(f"LLM criteria extraction failed: {str(e)}")
         return _fallback_criteria(text)
-
-
-def generate_reasoning(criterion: dict[str, Any], verdict: str, evidence_summary: str) -> str:
-    return (
-        f"Criterion {criterion.get('field')} ({criterion.get('text_raw','')[:120]}). "
-        f"Verdict: {verdict}. {evidence_summary}"
-    )

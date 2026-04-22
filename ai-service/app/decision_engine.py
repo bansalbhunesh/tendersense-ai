@@ -312,10 +312,14 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
                 ocr = {}
         text = _ocr_full_text(ocr)
         if text:
-            context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:40000]}\n"
-        if len(context_text) >= max_chars:
-            context_text = context_text[:max_chars]
-            break
+            snippet = f"\n--- Document: {d.get('filename')} ---\n{text[:40000]}\n"
+            room = max_chars - len(context_text)
+            if room <= 0:
+                break
+            if len(snippet) > room:
+                context_text += snippet[:room]
+                break
+            context_text += snippet
 
     prompt = f"""You are a senior procurement auditor evaluating bid eligibility.
 Criterion to verify:
