@@ -5,7 +5,6 @@ and reasoning graph construction.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -301,8 +300,10 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
             "reasoning": "Anthropic API key missing or anthropic package not installed.",
         }
 
+    max_docs = int(os.getenv("LLM_MAX_DOCS", "8"))
+    max_chars = int(os.getenv("LLM_MAX_CONTEXT_CHARS", "180000"))
     context_text = ""
-    for d in documents:
+    for d in documents[:max_docs]:
         ocr = d.get("ocr") or {}
         if isinstance(ocr, str):
             try:
@@ -311,7 +312,10 @@ def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dic
                 ocr = {}
         text = _ocr_full_text(ocr)
         if text:
-            context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:50000]}\n"
+            context_text += f"\n--- Document: {d.get('filename')} ---\n{text[:40000]}\n"
+        if len(context_text) >= max_chars:
+            context_text = context_text[:max_chars]
+            break
 
     prompt = f"""You are a senior procurement auditor evaluating bid eligibility.
 Criterion to verify:
@@ -342,7 +346,7 @@ Return ONLY a JSON object:
 """
     try:
         msg = client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
+            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=1024,
             temperature=0,
             messages=[{"role": "user", "content": prompt}],

@@ -102,10 +102,11 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 180 * time.Second, // Long for AI evaluation responses
+		Addr:        ":" + port,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// Keep aligned with long-running evaluation path.
+		WriteTimeout: 16 * time.Minute,
 		IdleTimeout:  60 * time.Second,
 	}
 

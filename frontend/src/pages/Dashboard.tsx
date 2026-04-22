@@ -6,6 +6,7 @@ type TenderRow = { id: string; title: string; status: string; created_at: string
 
 export default function Dashboard() {
   const [title, setTitle] = useState("Construction services — eligibility screening");
+  const [description, setDescription] = useState("Hackathon demo tender");
   const [rows, setRows] = useState<TenderRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,9 +35,10 @@ export default function Dashboard() {
       await apiFetch("/tenders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description: "Hackathon demo tender" }),
+        body: JSON.stringify({ title, description }),
       });
       setTitle("");
+      setDescription("");
       await load();
     } catch (ex: unknown) {
       setErr(String(ex));
@@ -72,6 +74,9 @@ export default function Dashboard() {
           <form onSubmit={create}>
             <label>Title</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <div style={{ height: 10 }} />
+            <label>Description</label>
+            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
             <div style={{ height: 12 }} />
             <button className="primary" type="submit">
               Create tender workspace

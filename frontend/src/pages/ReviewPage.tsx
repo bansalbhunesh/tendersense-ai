@@ -13,6 +13,7 @@ type Item = {
 export default function ReviewPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [tenderId, setTenderId] = useState("");
   const [bidderId, setBidderId] = useState("");
   const [criterionId, setCriterionId] = useState("");
@@ -84,6 +85,7 @@ export default function ReviewPage() {
                   setTenderId(it.tender_id);
                   setBidderId(it.bidder_id);
                   setCriterionId(it.criterion_id);
+                  setSelectedItem(it);
                 }}
               >
                 Fill override form
@@ -95,6 +97,16 @@ export default function ReviewPage() {
         <div className="panel">
           <h2>Reviewer override</h2>
           <p className="muted">Every override is hashed and appended immutably for procurement audit.</p>
+          {selectedItem && (
+            <div className="panel" style={{ marginBottom: 12 }}>
+              <div className="mono" style={{ marginBottom: 8 }}>
+                Context: bidder {selectedItem.bidder_id.slice(0, 8)}… criterion {selectedItem.criterion_id}
+              </div>
+              <pre className="mono" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                {JSON.stringify(selectedItem.payload, null, 2)}
+              </pre>
+            </div>
+          )}
           <form onSubmit={submitOverride}>
             <label>Tender ID</label>
             <input value={tenderId} onChange={(e) => setTenderId(e.target.value)} required />
@@ -138,7 +150,9 @@ export default function ReviewPage() {
           <tbody>
             {audit.map((e) => (
               <tr key={String(e.id)}>
-                <td className="mono">{String(e.created_at)}</td>
+                <td className="mono">
+                  {new Date(String(e.created_at)).toLocaleString()}
+                </td>
                 <td>{String(e.action)}</td>
                 <td className="mono">{String(e.checksum || "").slice(0, 24)}…</td>
               </tr>

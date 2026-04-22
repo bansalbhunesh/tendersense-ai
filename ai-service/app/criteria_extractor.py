@@ -199,7 +199,9 @@ Return ONLY a JSON object with this structure:
       "unit": "INR|bool|count|percent",
       "mandatory": true,
       "source_priority": ["doc_type1", "doc_type2"],
-      "semantic_ambiguity_score": 0.0-1.0
+                "semantic_ambiguity_score": 0.0-1.0,
+                "depends_on": "criterion_id_or_null",
+                "temporal": {"type":"any_of_last_n_years|last_n_years|null", "n":3}
     }}
   ]
 }}
@@ -209,7 +211,7 @@ TENDER TEXT:
 """
     try:
         msg = client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620"),
+            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=4096,
             temperature=0,
             messages=[{"role": "user", "content": prompt}],
@@ -226,6 +228,12 @@ TENDER TEXT:
         criteria = data.get("criteria", [])
         if not criteria:
             return _fallback_criteria(text)
+        # Backfill optional fields that are often omitted by LLM output.
+        for c in criteria:
+            if not isinstance(c, dict):
+                continue
+            c.setdefault("depends_on", None)
+            c.setdefault("temporal", None)
         return criteria
         
     except Exception as e:

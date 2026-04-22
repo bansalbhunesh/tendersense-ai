@@ -132,8 +132,10 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		}
 
 		var ocrRes struct {
-			Text    string  `json:"text"`
-			Quality float64 `json:"quality_score"`
+			Text    string           `json:"text"`
+			Quality float64          `json:"quality_score"`
+			Engine  string           `json:"engine"`
+			Pages   []map[string]any `json:"pages"`
 		}
 		_ = util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes)
 		payload, _ := json.Marshal(ocrRes)

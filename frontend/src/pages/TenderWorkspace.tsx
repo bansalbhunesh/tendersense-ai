@@ -26,8 +26,8 @@ export default function TenderWorkspace() {
   const [msg, setMsg] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
 
-  async function refresh(): Promise<{ criteriaCount: number; bidderCount: number }> {
-    setPageLoading(true);
+  async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
+    if (!opts?.silent) setPageLoading(true);
     try {
       const t = (await apiFetch(`/tenders/${tenderId}`)) as Record<string, unknown>;
       setTender(t);
@@ -49,7 +49,7 @@ export default function TenderWorkspace() {
       const crit = ((t.criteria as unknown[]) || []).length;
       return { criteriaCount: crit, bidderCount: bl.length };
     } finally {
-      setPageLoading(false);
+      if (!opts?.silent) setPageLoading(false);
     }
   }
 
@@ -162,7 +162,7 @@ export default function TenderWorkspace() {
     setBusy(true);
     setMsg(null);
     try {
-      const { criteriaCount, bidderCount } = await refresh();
+      const { criteriaCount, bidderCount } = await refresh({ silent: true });
       if (criteriaCount === 0) {
         setMsg("No criteria in this tender yet. Upload a tender document with extractable text first.");
         setTab("docs");
@@ -174,7 +174,7 @@ export default function TenderWorkspace() {
         return;
       }
       await apiFetch(`/tenders/${tenderId}/evaluate`, { method: "POST" });
-      await refresh();
+      await refresh({ silent: true });
       setTab("results");
       setMsg("Evaluation finished — review graph and per-criterion verdicts.");
     } catch (ex: unknown) {
@@ -313,6 +313,62 @@ export default function TenderWorkspace() {
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "gst_certificate")}
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    Audited balance sheet
+                    <input
+                      type="file"
+                      onChange={(e) =>
+                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "audited_balance_sheet")
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <label style={{ flex: 1 }}>
+                    ITR
+                    <input type="file" onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "itr")} />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    ISO certificate
+                    <input
+                      type="file"
+                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "iso_certificate")}
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    Work order
+                    <input
+                      type="file"
+                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "work_order")}
+                    />
+                  </label>
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <label style={{ flex: 1 }}>
+                    Experience letters
+                    <input
+                      type="file"
+                      onChange={(e) =>
+                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "experience_letters")
+                      }
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    Bank statement
+                    <input
+                      type="file"
+                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "bank_statement")}
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    Technical brochure
+                    <input
+                      type="file"
+                      onChange={(e) =>
+                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "technical_brochure")
+                      }
                     />
                   </label>
                 </div>

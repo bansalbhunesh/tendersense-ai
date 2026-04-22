@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +53,8 @@ def _deskew(gray: np.ndarray) -> np.ndarray:
         angle = 90 + angle
     elif angle > 45:
         angle = angle - 90
+    if abs(angle) < 0.5:
+        return gray
     h, w = gray.shape[:2]
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
     return cv2.warpAffine(gray, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
@@ -111,7 +114,8 @@ def _tesseract_image(path: str) -> tuple[str, float]:
     if im is None:
         return "", 0.0
     gray = _preprocess(im)
-    prep_path = path + ".prep.png"
+    fd, prep_path = tempfile.mkstemp(suffix=".prep.png")
+    os.close(fd)
     cv2.imwrite(prep_path, gray)
     try:
         data = pytesseract.image_to_data(Image.open(prep_path), output_type=pytesseract.Output.DICT)
@@ -123,7 +127,45 @@ def _tesseract_image(path: str) -> tuple[str, float]:
     texts = [t for t in data["text"] if t and str(t).strip()]
     confs = [int(c) for c in data["conf"] if c not in ("-1", -1)]
     mean = sum(confs) / len(confs) / 100.0 if confs else 0.5
-    return " ".join(texts), mean
+    return redact_noise(" ".join(texts)), mean
+
+
+def _ocr_scanned_pdf(path: str) -> OCRResult:
+    """OCR each PDF page as image when native text extraction is empty."""
+    import pdfplumber
+
+    pages: list[OCRPage] = []
+    all_text: list[str] = []
+    confs: list[float] = []
+    with pdfplumber.open(path) as pdf:
+        for i, page in enumerate(pdf.pages, start=1):
+            try:
+                pil = page.to_image(resolution=200).original.convert("RGB")
+                arr = np.array(pil)
+                bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            except Exception:
+                continue
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+                tmp_path = tf.name
+            try:
+                cv2.imwrite(tmp_path, bgr)
+                pt, conf, boxes = _paddle_ocr_image(tmp_path)
+                engine = "paddleocr"
+                if not pt.strip():
+                    pt, conf = _tesseract_image(tmp_path)
+                    boxes = []
+                    engine = "tesseract"
+                pt = redact_noise(pt or "")
+                pages.append(OCRPage(page_no=i, text=pt, boxes=boxes, mean_confidence=conf))
+                if pt.strip():
+                    all_text.append(pt)
+                confs.append(conf if conf > 0 else 0.35)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+    text = "\n".join(x for x in all_text if x.strip())
+    q = min(0.95, max(0.2, (sum(confs) / len(confs)) if confs else 0.2))
+    return OCRResult(text=text, quality_score=q, engine="pdf_raster_ocr", pages=pages)
 
 
 def process_path(path: str, document_id: str = "") -> OCRResult:
@@ -133,11 +175,13 @@ def process_path(path: str, document_id: str = "") -> OCRResult:
         txt = _read_pdf_text(path)
         if len(txt.strip()) > 50:
             return OCRResult(
-                text=txt,
+                text=redact_noise(txt),
                 quality_score=0.95,
                 engine="pdfplumber",
-                pages=[OCRPage(page_no=1, text=txt, mean_confidence=0.95)],
+                pages=[OCRPage(page_no=1, text=redact_noise(txt), mean_confidence=0.95)],
             )
+        # Scanned PDF fallback: rasterize pages + OCR instead of silent empty text.
+        return _ocr_scanned_pdf(path)
 
     if ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"):
         pt, conf, boxes = _paddle_ocr_image(path)
@@ -148,15 +192,11 @@ def process_path(path: str, document_id: str = "") -> OCRResult:
             boxes = []
         qual = min(0.99, max(0.3, conf))
         return OCRResult(
-            text=pt,
+            text=redact_noise(pt),
             quality_score=qual,
             engine=engine,
-            pages=[OCRPage(page_no=1, text=pt, boxes=boxes, mean_confidence=conf)],
+            pages=[OCRPage(page_no=1, text=redact_noise(pt), boxes=boxes, mean_confidence=conf)],
         )
-
-    # Fallback: try pdf as image rasterization not implemented — return stub
-    if ext == ".pdf":
-        return OCRResult(text="", quality_score=0.2, engine="none", pages=[])
 
     return OCRResult(text="", quality_score=0.0, engine="none", pages=[])
 

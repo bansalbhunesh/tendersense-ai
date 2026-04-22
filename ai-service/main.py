@@ -58,7 +58,6 @@ def validate_path(path: str) -> str:
         norm = os.path.normpath(raw)
         candidates.append(os.path.join(data_root, norm))
         candidates.append(os.path.join(data_root, os.path.basename(norm)))
-        candidates.append(os.path.join(os.getcwd(), norm))
         candidates.append(os.path.realpath(raw))
 
     seen: set[str] = set()

@@ -31,7 +31,7 @@ services:
       - "8081:8081"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
+      - ANTHROPIC_MODEL=claude-sonnet-4-20250514
       - DATA_DIR=/app/data/uploads
       - REDIS_URL=redis://redis:6379/0
     healthcheck:
@@ -61,6 +61,11 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - uploads:/app/data/uploads
 

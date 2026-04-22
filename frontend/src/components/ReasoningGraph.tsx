@@ -16,44 +16,73 @@ export default function ReasoningGraph({ graph }: { graph: { nodes: Node[]; edge
     return <p className="muted">Run an evaluation to materialize the reasoning graph.</p>;
   }
 
+  const criteria = nodes.filter((n) => n.type === "criterion");
+  const verdicts = nodes.filter((n) => n.type !== "criterion");
+  const leftW = 320;
+  const rightW = 320;
+  const rowH = 120;
+  const width = leftW + rightW + 80;
+  const height = Math.max(criteria.length, verdicts.length, 1) * rowH + 40;
+  const yFor = (idx: number) => 30 + idx * rowH + 40;
+  const criterionPos = new Map<string, { x: number; y: number }>();
+  const verdictPos = new Map<string, { x: number; y: number }>();
+  criteria.forEach((c, i) => criterionPos.set(c.id, { x: 20, y: yFor(i) }));
+  verdicts.forEach((v, i) => verdictPos.set(v.id, { x: leftW + 60, y: yFor(i) }));
+
   return (
     <div>
       <p className="muted" style={{ marginBottom: 12 }}>
-        Directed view: each criterion links to per-bidder verdict nodes with confidence. Click a result row to read
-        evidence-backed reasoning.
+        Directed view: criteria (left) linking to bidder verdicts (right) with confidence.
       </p>
-      <div className="graph">
-        {nodes.map((n) => (
-          <div key={n.id} className={`graph-node ${n.type}`}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: "0.7rem", opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {n.type}
-              </div>
-              {typeof n.confidence === "number" && (
-                <span className={`badge ${n.confidence > 0.8 ? 'ok' : 'review'}`} style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                  {(n.confidence * 100).toFixed(0)}%
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '0.9rem', marginBottom: 8 }}>{n.label}</div>
-            {n.bidder_id && (
-              <div className="mono" style={{ fontSize: '0.7rem', opacity: 0.6 }}>
-                Bidder: {n.bidder_id.slice(0, 8)}…
-              </div>
-            )}
-          </div>
-        ))}
+      <div style={{ overflowX: "auto" }}>
+        <svg width={width} height={height} style={{ display: "block", marginBottom: 12 }}>
+          {edges.map((e, i) => {
+            const from = criterionPos.get(e.from);
+            const to = verdictPos.get(e.to);
+            if (!from || !to) return null;
+            return (
+              <line
+                key={`${e.from}-${e.to}-${i}`}
+                x1={from.x + leftW - 16}
+                y1={from.y + 28}
+                x2={to.x + 16}
+                y2={to.y + 28}
+                stroke="rgba(148,163,184,0.55)"
+                strokeWidth="1.5"
+              />
+            );
+          })}
+          {criteria.map((n) => {
+            const p = criterionPos.get(n.id)!;
+            return (
+              <g key={n.id}>
+                <rect x={p.x} y={p.y} rx="10" width={leftW} height="56" fill="rgba(17,24,39,0.85)" stroke="rgba(245,158,11,0.45)" />
+                <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
+                  CRITERION
+                </text>
+                <text x={p.x + 10} y={p.y + 40} fill="#d1d5db" fontSize="11">
+                  {n.label.slice(0, 85)}
+                </text>
+              </g>
+            );
+          })}
+          {verdicts.map((n) => {
+            const p = verdictPos.get(n.id)!;
+            return (
+              <g key={n.id}>
+                <rect x={p.x} y={p.y} rx="10" width={rightW} height="56" fill="rgba(17,24,39,0.85)" stroke="rgba(59,130,246,0.45)" />
+                <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
+                  {n.label}
+                </text>
+                <text x={p.x + 10} y={p.y + 40} fill="#93c5fd" fontSize="11">
+                  {n.bidder_id ? `bidder ${n.bidder_id.slice(0, 8)}...` : ""}
+                  {typeof n.confidence === "number" ? `  conf ${(n.confidence * 100).toFixed(0)}%` : ""}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
       </div>
-      {edges.length > 0 && (
-        <div style={{ marginTop: 14 }} className="mono muted">
-          {edges.slice(0, 40).map((e, i) => (
-            <div key={i}>
-              {e.from} —{e.label ? ` ${e.label} → ` : "→ "}
-              {e.to}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
