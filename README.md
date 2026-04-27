@@ -9,11 +9,23 @@
 ## What it does
 
 - **Tender ingest** — Upload tender PDFs; extract text (native PDF + OCR fallback).
-- **Criteria extraction** — Structured eligibility rules (LLM with schema when `ANTHROPIC_API_KEY` is set; deterministic fallback offline).
+- **Criteria extraction** — Structured eligibility rules. LLM with schema when `ANTHROPIC_API_KEY` is set; otherwise the deterministic extractor recognises turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting/debarment.
 - **Bidder evidence** — Parse bidder documents, normalize amounts and compliance signals.
-- **Decision engine** — Rule-based evaluation with explicit confidence; **`NEEDS_REVIEW`** instead of silent rejection when uncertain or conflicting.
-- **Officer UI** — Dashboard, tender workspace, **reasoning graph**, review queue, audit log.
+- **Decision engine** — Rule-based evaluation with explicit confidence. Numeric thresholds and document-presence checks emit deterministic **`PASS`**/**`FAIL`** with confidence ≥ 0.7; **`NEEDS_REVIEW`** is reserved for genuinely missing or contradictory evidence. Optional LLM cross-check augments rather than gates.
+- **Officer UI** — Dashboard with pagination, tender workspace, **reasoning graph** with verdict color-coding and click-to-detail, two-pane review queue with criterion-level overrides, audit log, in-app toast notifications.
+- **Persistence** — Evaluation jobs are persisted in Postgres (`evaluation_jobs` table) and survive backend restarts; a partial unique index prevents duplicate concurrent runs per tender.
 - **Demo pack** — Three golden PDFs + scripts under `demo/` for a repeatable live pitch.
+
+## Tests
+
+| Service | Suite | Count |
+|---------|-------|-------|
+| `backend/` | `go test ./...` | 44 unit/handler tests |
+| `ai-service/` | `pytest` | 45 (1 skipped if Tesseract is absent) |
+| `frontend/` | `vitest run` | 29 component/api tests |
+| `frontend/e2e/` | Playwright | 1 end-to-end smoke |
+
+CI runs all four suites on every PR (`.github/workflows/ci.yml`).
 
 ---
 
@@ -105,6 +117,7 @@ The Vite dev server proxies `/api` to `http://127.0.0.1:8080`.
 ## Docker (API + AI + Postgres)
 
 ```bash
+cp .env.example .env   # set JWT_SECRET (32+ chars) and ALLOWED_ORIGINS
 docker compose up --build
 ```
 
@@ -117,9 +130,14 @@ The frontend is not included in Compose by default; run it locally with `npm run
 | Variable | Service | Purpose |
 |----------|---------|---------|
 | `DATABASE_URL` | Backend | PostgreSQL connection string |
-| `JWT_SECRET` | Backend | Signing key for JWTs |
+| `JWT_SECRET` | Backend | Signing key for JWTs (32+ chars; warns below that) |
+| `ALLOWED_ORIGINS` | Backend / AI | Comma-separated allowed CORS origins |
 | `AI_SERVICE_URL` | Backend | Base URL of the Python service (e.g. `http://localhost:8081`) |
-| `ANTHROPIC_API_KEY` | AI (optional) | Claude-based criteria extraction |
+| `ANTHROPIC_API_KEY` | AI (optional) | Claude cross-check; deterministic engine works without it |
+| `DATA_DIR` | Backend / AI | Shared upload directory (path-traversal-locked in AI service) |
+| `REDIS_URL` | AI (optional) | OCR/criteria/evaluation cache; silent no-op when unset |
+| `GIT_SHA` | Both (optional) | Surfaced via `GET /api/v1/version` and `/v1/version` |
+| `VITE_DEMO_EMAIL`, `VITE_DEMO_PASSWORD` | Frontend (dev only) | Populates a "Fill demo creds" button on the auth page in dev builds; never committed |
 | `PORT` | Backend / AI | Listen port (default 8080 / 8081) |
 
 ---
