@@ -1,72 +1,87 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiFetch, logout } from "../api";
+import { apiFetch, apiFetchWithMeta } from "../api";
+import AppHeader from "../components/AppHeader";
+import { useToast } from "../components/ToastProvider";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type TenderRow = { id: string; title: string; status: string; created_at: string };
 
+const PAGE_SIZES = [25, 50, 100] as const;
+
 export default function Dashboard() {
+  useDocumentTitle("Officer dashboard · TenderSense AI");
+  const toast = useToast();
   const [title, setTitle] = useState("Construction services — eligibility screening");
   const [description, setDescription] = useState("Hackathon demo tender");
   const [rows, setRows] = useState<TenderRow[]>([]);
-  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [offset, setOffset] = useState(0);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
 
-  async function load() {
+  async function load(nextOffset = offset, nextPageSize = pageSize) {
     setLoading(true);
-    setErr(null);
     try {
-      const data = (await apiFetch("/tenders")) as { tenders: TenderRow[] };
-      setRows(data.tenders || []);
+      const { data, totalCount: count } = await apiFetchWithMeta<{ tenders: TenderRow[] }>(
+        `/tenders?limit=${nextPageSize}&offset=${nextOffset}`,
+      );
+      setRows(data?.tenders || []);
+      setTotalCount(count);
     } catch (e: unknown) {
-      setErr(String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to load tenders: ${message}`);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    void load(offset, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset, pageSize]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
-    setErr(null);
     try {
       await apiFetch("/tenders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description }),
       });
+      toast.success("Tender workspace created.");
       setTitle("");
       setDescription("");
-      await load();
+      // Reset to first page so freshly created tender is visible.
+      if (offset !== 0) setOffset(0);
+      else await load(0, pageSize);
     } catch (ex: unknown) {
-      setErr(String(ex));
+      const message = ex instanceof Error ? ex.message : String(ex);
+      toast.error(`Could not create tender: ${message}`);
     }
   }
 
+  const showPagination = totalCount != null;
+  const canPrev = offset > 0;
+  const canNext = totalCount != null && offset + rows.length < totalCount;
+  const totalLabel =
+    totalCount != null ? `${totalCount} Total` : `${rows.length} loaded`;
+
   return (
     <div className="shell">
-      <div className="topbar">
-        <div className="brand">
-          <strong>TenderSense AI</strong>
-          <span>Officer dashboard</span>
-        </div>
-        <div className="row">
+      <AppHeader
+        left={
+          <>
+            <strong>TenderSense AI</strong>
+            <span>Officer dashboard</span>
+          </>
+        }
+        actions={
           <Link to="/review">
             <button className="ghost">Review queue</button>
           </Link>
-          <button
-            className="ghost"
-            onClick={() => {
-              logout();
-              window.location.href = "/";
-            }}
-          >
-            Log out
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid2">
         <div className="panel">
@@ -82,7 +97,6 @@ export default function Dashboard() {
               Create tender workspace
             </button>
           </form>
-          {err && <p className="muted" style={{ color: "#ff9b9b", marginTop: 12 }}>{err}</p>}
         </div>
         <div className="panel">
           <h2>Pipeline</h2>
@@ -98,7 +112,7 @@ export default function Dashboard() {
       <div className="panel" style={{ marginTop: 24 }}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
           <h2>Active Tenders</h2>
-          <span className="badge ok">{rows.length} Total</span>
+          <span className="badge ok" data-testid="tenders-total">{totalLabel}</span>
         </div>
         <table className="table">
           <thead>
@@ -117,7 +131,7 @@ export default function Dashboard() {
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
+                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted" data-testid="tenders-empty">
                   No active tenders found. Create your first workspace above.
                 </td>
               </tr>
@@ -140,6 +154,56 @@ export default function Dashboard() {
             )}
           </tbody>
         </table>
+
+        {showPagination && (
+          <div
+            className="row"
+            data-testid="tenders-pagination"
+            style={{ marginTop: 16, justifyContent: "space-between" }}
+          >
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <label htmlFor="tender-page-size" style={{ margin: 0 }}>Page size</label>
+              <select
+                id="tender-page-size"
+                data-testid="tenders-page-size"
+                value={pageSize}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setPageSize(next);
+                  setOffset(0);
+                }}
+                style={{ width: 100 }}
+              >
+                {PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <span className="muted" style={{ fontSize: "0.85rem" }}>
+                {offset + 1}-{offset + rows.length} of {totalCount}
+              </span>
+              <button
+                type="button"
+                className="ghost"
+                data-testid="tenders-prev"
+                disabled={!canPrev}
+                onClick={() => setOffset(Math.max(0, offset - pageSize))}
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                data-testid="tenders-next"
+                disabled={!canNext}
+                onClick={() => setOffset(offset + pageSize)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

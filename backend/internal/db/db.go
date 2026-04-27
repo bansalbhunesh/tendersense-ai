@@ -127,6 +127,25 @@ func Migrate(db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_rq_tender_id ON review_queue(tender_id);`,
+
+		// Evaluation jobs: persisted state for the async eval pipeline.
+		// `payload` carries the serialized result on completion.
+		`CREATE TABLE IF NOT EXISTS evaluation_jobs (
+			id TEXT PRIMARY KEY,
+			tender_id TEXT NOT NULL,
+			user_id TEXT,
+			status TEXT NOT NULL DEFAULT 'queued',
+			progress INT NOT NULL DEFAULT 0,
+			error TEXT,
+			payload JSONB,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_eval_jobs_tender ON evaluation_jobs(tender_id);`,
+		// Replaces the in-memory per-tender lock: at most one queued/running job per tender.
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_eval_jobs_active
+			ON evaluation_jobs(tender_id)
+			WHERE status IN ('queued','running');`,
 	}
 	for _, s := range stmts {
 		if _, err := tx.Exec(s); err != nil {
@@ -134,4 +153,19 @@ func Migrate(db *sql.DB) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// RecoverInterruptedJobs marks any leftover queued/running evaluation jobs as
+// "interrupted" with an explanatory error. Call once at boot before serving.
+func RecoverInterruptedJobs(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	_, err := db.Exec(`
+		UPDATE evaluation_jobs
+		   SET status='interrupted',
+		       error=COALESCE(NULLIF(error,''),'process restart'),
+		       updated_at=now()
+		 WHERE status IN ('queued','running')`)
+	return err
 }

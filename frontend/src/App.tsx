@@ -5,6 +5,7 @@ import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import TenderWorkspace from "./pages/TenderWorkspace";
 import ReviewPage from "./pages/ReviewPage";
+import NotFound from "./pages/NotFound";
 
 function Private({ children }: { children: React.ReactNode }) {
   if (!token()) return <Navigate to="/" replace />;
@@ -14,34 +15,34 @@ function Private({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ErrorBoundary>
-    <Routes>
-      <Route path="/" element={<AuthPage />} />
-      <Route
-        path="/app"
-        element={
-          <Private>
-            <Dashboard />
-          </Private>
-        }
-      />
-      <Route
-        path="/tender/:id"
-        element={
-          <Private>
-            <TenderWorkspace />
-          </Private>
-        }
-      />
-      <Route
-        path="/review"
-        element={
-          <Private>
-            <ReviewPage />
-          </Private>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      <Routes>
+        <Route path="/" element={<AuthPage />} />
+        <Route
+          path="/app"
+          element={
+            <Private>
+              <Dashboard />
+            </Private>
+          }
+        />
+        <Route
+          path="/tender/:id"
+          element={
+            <Private>
+              <TenderWorkspace />
+            </Private>
+          }
+        />
+        <Route
+          path="/review"
+          element={
+            <Private>
+              <ReviewPage />
+            </Private>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </ErrorBoundary>
   );
 }

@@ -40,10 +40,23 @@ def _get_client() -> Any | None:
         return None
 
 
-def stable_hash_key(prefix: str, *parts: str) -> str:
+def stable_hash_key(prefix: str, *parts: Any) -> str:
+    """Compute a stable cache key. Accepts strings, ints, lists, dicts, None.
+    Non-string parts are JSON-serialised with sorted keys so the hash is order-stable."""
     h = hashlib.sha256()
     for p in parts:
-        h.update((p or "").encode())
+        if p is None:
+            h.update(b"")
+            continue
+        if isinstance(p, (str, bytes)):
+            data = p if isinstance(p, bytes) else p.encode()
+        else:
+            try:
+                data = json.dumps(p, sort_keys=True, default=str).encode()
+            except (TypeError, ValueError):
+                data = repr(p).encode()
+        h.update(data)
+        h.update(b"\x1f")  # separator so concatenations don't collide
     return f"{prefix}:{h.hexdigest()[:48]}"
 
 

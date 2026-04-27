@@ -24,13 +24,13 @@ func RegisterBidder(db *sql.DB) gin.HandlerFunc {
 		}
 		var req bidderCreate
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			util.BadRequest(c, err.Error())
 			return
 		}
 		id := uuid.NewString()
 		_, err := db.Exec(`INSERT INTO bidders (id, tender_id, name) VALUES ($1,$2,$3)`, id, tenderID, req.Name)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
 		uid := c.GetString("user_id")
@@ -45,9 +45,22 @@ func ListBidders(db *sql.DB) gin.HandlerFunc {
 		if !RequireTenderOwner(db, c, tenderID) {
 			return
 		}
-		rows, err := db.Query(`SELECT id, name, created_at FROM bidders WHERE tender_id=$1 ORDER BY created_at`, tenderID)
+		page, err := util.ParsePagination(c)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.BadRequest(c, err.Error())
+			return
+		}
+		var total int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM bidders WHERE tender_id=$1`, tenderID).Scan(&total); err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
+		rows, err := db.Query(
+			`SELECT id, name, created_at FROM bidders WHERE tender_id=$1 ORDER BY created_at LIMIT $2 OFFSET $3`,
+			tenderID, page.Limit, page.Offset,
+		)
+		if err != nil {
+			util.InternalError(c, err.Error())
 			return
 		}
 		defer rows.Close()
@@ -61,9 +74,10 @@ func ListBidders(db *sql.DB) gin.HandlerFunc {
 			out = append(out, map[string]any{"id": id, "name": name, "created_at": created})
 		}
 		if err := rows.Err(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
+		util.SetTotalCountHeader(c, total)
 		c.JSON(http.StatusOK, gin.H{"bidders": out})
 	}
 }
@@ -78,11 +92,11 @@ func GetBidder(db *sql.DB) gin.HandlerFunc {
 		var name string
 		err := db.QueryRow(`SELECT name FROM bidders WHERE id=$1`, id).Scan(&name)
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			util.NotFound(c, "not found")
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+			util.InternalError(c, "lookup failed")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"id": id, "name": name, "tender_id": tenderID})
@@ -98,7 +112,7 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		}
 		fh, err := c.FormFile("file")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "file required"})
+			util.BadRequest(c, "file required")
 			return
 		}
 		root := UploadDataDir()
@@ -106,13 +120,13 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		docID := uuid.NewString()
 		name, okName := safeUploadFilename(fh.Filename)
 		if !okName {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff"})
+			util.BadRequest(c, "invalid or disallowed file type; allowed: pdf, png, jpg, jpeg, tif, tiff")
 			return
 		}
 		dest := filepath.Join(root, docID+"_"+name)
 		dt, okDT := NormalizeBidderDocType(c.PostForm("doc_type"))
 		if !okDT {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid doc_type"})
+			util.BadRequest(c, "invalid doc_type")
 			return
 		}
 		uid := c.GetString("user_id")

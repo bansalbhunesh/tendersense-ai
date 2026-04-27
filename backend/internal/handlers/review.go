@@ -17,15 +17,30 @@ var allowedOverrideVerdicts = map[string]struct{}{
 func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")
+		page, err := util.ParsePagination(c)
+		if err != nil {
+			util.BadRequest(c, err.Error())
+			return
+		}
+		var total int
+		if err := db.QueryRow(`
+			SELECT COUNT(*)
+			FROM review_queue rq
+			JOIN tenders t ON rq.tender_id = t.id
+			WHERE rq.status='open' AND t.owner_id=$1`, uid).Scan(&total); err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
 		rows, err := db.Query(`
 			SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at, t.title, b.name
 			FROM review_queue rq
 			JOIN tenders t ON rq.tender_id = t.id
 			JOIN bidders b ON rq.bidder_id = b.id
 			WHERE rq.status='open' AND t.owner_id=$1
-			ORDER BY rq.created_at`, uid)
+			ORDER BY rq.created_at
+			LIMIT $2 OFFSET $3`, uid, page.Limit, page.Offset)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
 		defer rows.Close()
@@ -47,9 +62,10 @@ func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 			})
 		}
 		if err := rows.Err(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
+		util.SetTotalCountHeader(c, total)
 		c.JSON(http.StatusOK, gin.H{"items": items})
 	}
 }
@@ -66,7 +82,7 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req overrideReq
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			util.BadRequest(c, err.Error())
 			return
 		}
 		uid := c.GetString("user_id")
@@ -75,13 +91,13 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 		}
 		nv := strings.ToUpper(strings.TrimSpace(req.NewVerdict))
 		if _, ok := allowedOverrideVerdicts[nv]; !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid new_verdict"})
+			util.BadRequest(c, "invalid new_verdict")
 			return
 		}
 
 		tx, err := db.BeginTx(c.Request.Context(), nil)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "transaction failed"})
+			util.InternalError(c, "transaction failed")
 			return
 		}
 		defer tx.Rollback()
@@ -92,16 +108,16 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 			req.TenderID, req.BidderID, req.CriterionID,
 		).Scan(&oldPayload)
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "decision not found"})
+			util.NotFound(c, "decision not found")
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
 		var m map[string]any
 		if err := json.Unmarshal(oldPayload, &m); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid decision payload"})
+			util.InternalError(c, "invalid decision payload")
 			return
 		}
 		m["verdict"] = nv
@@ -112,13 +128,13 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`UPDATE decisions SET payload=$4::jsonb, checksum=$5 WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
 			req.TenderID, req.BidderID, req.CriterionID, string(newB), sum); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update decision"})
+			util.InternalError(c, "failed to update decision")
 			return
 		}
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`UPDATE review_queue SET status='resolved' WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
 			req.TenderID, req.BidderID, req.CriterionID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve review item"})
+			util.InternalError(c, "failed to resolve review item")
 			return
 		}
 
@@ -131,11 +147,11 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
 			req.TenderID, uid, "reviewer.override", string(ab), ch); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write audit"})
+			util.InternalError(c, "failed to write audit")
 			return
 		}
 		if err := tx.Commit(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "commit failed"})
+			util.InternalError(c, "commit failed")
 			return
 		}
 
@@ -147,22 +163,41 @@ func AuditLog(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")
 		tenderID := c.Query("tender_id")
+		page, perr := util.ParsePagination(c)
+		if perr != nil {
+			util.BadRequest(c, perr.Error())
+			return
+		}
 		q := `SELECT id, tender_id, user_id, action, payload, checksum, created_at FROM audit_log`
-		var rows *sql.Rows
-		var err error
+		var (
+			rows  *sql.Rows
+			err   error
+			total int
+		)
 		if tenderID != "" {
 			if !RequireTenderOwner(db, c, tenderID) {
 				return
 			}
-			rows, err = db.Query(q+` WHERE tender_id=$1::uuid ORDER BY id DESC LIMIT 200`, tenderID)
+			if err := db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE tender_id=$1::uuid`, tenderID).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
+			rows, err = db.Query(q+` WHERE tender_id=$1::uuid ORDER BY id DESC LIMIT $2 OFFSET $3`, tenderID, page.Limit, page.Offset)
 		} else {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE (
+				(tender_id IS NOT NULL AND tender_id IN (SELECT id FROM tenders WHERE owner_id=$1::uuid))
+				OR (user_id IS NOT NULL AND user_id=$1::uuid)
+			)`, uid).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
 			rows, err = db.Query(q+` WHERE (
 				(tender_id IS NOT NULL AND tender_id IN (SELECT id FROM tenders WHERE owner_id=$1::uuid))
 				OR (user_id IS NOT NULL AND user_id=$1::uuid)
-			) ORDER BY id DESC LIMIT 200`, uid)
+			) ORDER BY id DESC LIMIT $2 OFFSET $3`, uid, page.Limit, page.Offset)
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
 		defer rows.Close()
@@ -183,9 +218,10 @@ func AuditLog(db *sql.DB) gin.HandlerFunc {
 			})
 		}
 		if err := rows.Err(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
+		util.SetTotalCountHeader(c, total)
 		c.JSON(http.StatusOK, gin.H{"entries": items})
 	}
 }
@@ -204,11 +240,11 @@ func DecisionEvidence(db *sql.DB) gin.HandlerFunc {
 			tenderID, bid, crit,
 		).Scan(&payload)
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			util.NotFound(c, "not found")
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, err.Error())
 			return
 		}
 		var m map[string]any

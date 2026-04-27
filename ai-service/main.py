@@ -52,17 +52,33 @@ def _log_event(event: str, **fields: object) -> None:
 
 
 def validate_path(path: str) -> str:
-    """Resolve path under DATA_DIR. Supports absolute paths and backend-relative paths (e.g. data/uploads/...)."""
+    """Resolve path under DATA_DIR. Supports absolute paths and backend-relative paths
+    (e.g. data/uploads/...). Rejects any input whose normalised form attempts to escape
+    via ``..`` segments — even if the basename happens to exist under DATA_DIR."""
     data_root = os.path.realpath(DATA_DIR)
     raw = (path or "").strip()
     if not raw:
         raise HTTPException(status_code=403, detail="Access denied: empty path")
+
+    # Refuse explicit traversal attempts up-front. Without this, a basename-fallback
+    # candidate would silently redirect ``../../etc/passwd`` to ``DATA_DIR/passwd``.
+    if ".." in raw.replace("\\", "/").split("/"):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: path traversal not allowed",
+        )
 
     candidates: list[str] = []
     if os.path.isabs(raw):
         candidates.append(raw)
     else:
         norm = os.path.normpath(raw)
+        # If normalisation reveals a traversal we missed, also reject.
+        if norm.startswith("..") or norm == "..":
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: path traversal not allowed",
+            )
         candidates.append(os.path.join(data_root, norm))
         candidates.append(os.path.join(data_root, os.path.basename(norm)))
         candidates.append(os.path.realpath(raw))
@@ -135,6 +151,11 @@ class EvaluateReq(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "tendersense-ai"}
+
+
+@app.get("/v1/version")
+def version():
+    return {"version": "0.2.0", "git_sha": os.getenv("GIT_SHA", "")}
 
 
 @app.post("/v1/process-document")
