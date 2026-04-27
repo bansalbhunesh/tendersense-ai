@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { apiFetch, apiUpload } from "../api";
+import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
+import AppHeader from "../components/AppHeader";
 import ReasoningGraph from "../components/ReasoningGraph";
+import { useToast } from "../components/ToastProvider";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type Decision = Record<string, unknown> & {
   verdict?: string;
@@ -12,13 +15,20 @@ type Decision = Record<string, unknown> & {
   evidence_snapshot?: { document?: string; evidence_quote?: string; extracted_value?: string };
 };
 
+const PAGE_SIZES = [25, 50, 100] as const;
+
 export default function TenderWorkspace() {
   const { id } = useParams();
   const tenderId = id!;
+  useDocumentTitle("Tender workspace · TenderSense AI");
+  const toast = useToast();
   const [tab, setTab] = useState<"docs" | "bidders" | "run" | "results">("docs");
   const [tender, setTender] = useState<Record<string, unknown> | null>(null);
   const [bname, setBname] = useState("Demo Bidder Pvt Ltd");
   const [bidders, setBidders] = useState<{ id: string; name: string }[]>([]);
+  const [bidderTotal, setBidderTotal] = useState<number | null>(null);
+  const [bidderPageSize, setBidderPageSize] = useState<number>(50);
+  const [bidderOffset, setBidderOffset] = useState(0);
   const [results, setResults] = useState<{ decisions: Decision[]; graph: Record<string, unknown> | null } | null>(
     null,
   );
@@ -37,14 +47,19 @@ export default function TenderWorkspace() {
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
     try {
-      const [t, b, r] = (await Promise.all([
-        apiFetch(`/tenders/${tenderId}`),
-        apiFetch(`/tenders/${tenderId}/bidders`),
-        apiFetch(`/tenders/${tenderId}/results`).catch(() => null),
-      ])) as [Record<string, unknown>, { bidders: { id: string; name: string }[] }, { decisions: Record<string, unknown>[]; graph: Record<string, unknown> | null } | null];
+      const biddersUrl = `/tenders/${tenderId}/bidders?limit=${bidderPageSize}&offset=${bidderOffset}`;
+      const [t, bRes, r] = await Promise.all([
+        apiFetch(`/tenders/${tenderId}`) as Promise<Record<string, unknown>>,
+        apiFetchWithMeta<{ bidders: { id: string; name: string }[] }>(biddersUrl),
+        apiFetch(`/tenders/${tenderId}/results`).catch(() => null) as Promise<{
+          decisions: Record<string, unknown>[];
+          graph: Record<string, unknown> | null;
+        } | null>,
+      ]);
       setTender(t);
-      const bl = b?.bidders || [];
+      const bl = bRes.data?.bidders || [];
       setBidders(bl);
+      setBidderTotal(bRes.totalCount);
       if (r) {
         setResults({
           decisions: (r.decisions || []) as Decision[],
@@ -61,8 +76,12 @@ export default function TenderWorkspace() {
   }
 
   useEffect(() => {
-    void refresh();
-  }, [tenderId]);
+    void refresh().catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to load workspace: ${message}`);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenderId, bidderOffset, bidderPageSize]);
 
   async function uploadTenderDoc(e: FormEvent) {
     e.preventDefault();
@@ -95,8 +114,10 @@ export default function TenderWorkspace() {
         );
       }
     } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
-      setMsg(String(ex));
+      setMsg(message);
+      toast.error(`Tender document upload failed: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -114,10 +135,13 @@ export default function TenderWorkspace() {
         body: JSON.stringify({ name: bname }),
       });
       setBname(`Bidder ${bidders.length + 2}`);
+      toast.success(`Bidder "${bname}" registered.`);
       await refresh();
     } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
-      setMsg(String(ex));
+      setMsg(message);
+      toast.error(`Could not add bidder: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -134,9 +158,12 @@ export default function TenderWorkspace() {
       await apiUpload(`/bidders/${bidderId}/documents`, fd);
       await refresh();
       setMsg("Bidder document OCR complete.");
+      toast.success("Bidder document OCR complete.");
     } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
-      setMsg(String(ex));
+      setMsg(message);
+      toast.error(`Evidence upload failed: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -215,9 +242,12 @@ export default function TenderWorkspace() {
       setMsgType("success");
       const took = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       setMsg(`Evaluation finished in ${took}s — review graph and per-criterion verdicts.`);
+      toast.success(`Evaluation finished in ${took}s.`);
     } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
-      setMsg(String(ex));
+      setMsg(message);
+      toast.error(`Evaluation failed: ${message}`);
     } finally {
       setEvalRunning(false);
       setEvalJobId(null);
@@ -262,19 +292,27 @@ export default function TenderWorkspace() {
     });
   }, [results, resultsVerdictFilter, resultsSearch]);
 
+  const showBidderPagination = bidderTotal != null;
+  const canBidderPrev = bidderOffset > 0;
+  const canBidderNext = bidderTotal != null && bidderOffset + bidders.length < bidderTotal;
+
   return (
     <div className="shell">
-      <div className="topbar">
-        <div className="brand">
-          <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
-            ← Back
+      <AppHeader
+        left={
+          <>
+            <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
+              ← Back
+            </Link>
+            <strong style={{ marginLeft: 12 }}>{String(tender?.title || "Tender")}</strong>
+          </>
+        }
+        actions={
+          <Link to="/review">
+            <button className="ghost">Review queue</button>
           </Link>
-          <strong style={{ marginLeft: 12 }}>{String(tender?.title || "Tender")}</strong>
-        </div>
-        <Link to="/review">
-          <button className="ghost">Review queue</button>
-        </Link>
-      </div>
+        }
+      />
 
       <div className="tabs">
         {(["docs", "bidders", "run", "results"] as const).map((t) => (
@@ -465,6 +503,57 @@ export default function TenderWorkspace() {
               </div>
             ))}
             {bidders.length === 0 && <p className="muted">Add at least one bidder.</p>}
+
+            {showBidderPagination && (
+              <div
+                className="row"
+                data-testid="bidders-pagination"
+                style={{ marginTop: 16, justifyContent: "space-between" }}
+              >
+                <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                  <label htmlFor="bidder-page-size" style={{ margin: 0 }}>Page size</label>
+                  <select
+                    id="bidder-page-size"
+                    data-testid="bidders-page-size"
+                    value={bidderPageSize}
+                    onChange={(e) => {
+                      setBidderPageSize(Number(e.target.value));
+                      setBidderOffset(0);
+                    }}
+                    style={{ width: 100 }}
+                  >
+                    {PAGE_SIZES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className="muted" style={{ fontSize: "0.85rem" }}>
+                    {bidderOffset + 1}-{bidderOffset + bidders.length} of {bidderTotal}
+                  </span>
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid="bidders-prev"
+                    disabled={!canBidderPrev}
+                    onClick={() => setBidderOffset(Math.max(0, bidderOffset - bidderPageSize))}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid="bidders-next"
+                    disabled={!canBidderNext}
+                    onClick={() => setBidderOffset(bidderOffset + bidderPageSize)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -566,7 +655,7 @@ export default function TenderWorkspace() {
                     </div>
                     <span className={`badge ${cls}`}>{v.replace(/_/g, " ")}</span>
                   </div>
-                  
+
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 4 }}>Reasoning</div>
                     <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
