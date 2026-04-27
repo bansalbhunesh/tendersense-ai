@@ -43,6 +43,9 @@ func main() {
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("Critical Error: Migration failed: %v", err)
 	}
+	if err := db.RecoverInterruptedJobs(database); err != nil {
+		log.Printf("warning: failed to recover interrupted evaluation jobs: %v", err)
+	}
 
 	r := gin.New()
 	r.Use(middleware.RequestObservability())
@@ -70,6 +73,12 @@ func main() {
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 
 	api := r.Group("/api/v1")
+	api.GET("/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"version": "0.2.0",
+			"commit":  os.Getenv("GIT_SHA"),
+		})
+	})
 	{
 		authLimited := api.Group("")
 		authLimited.Use(middleware.AuthRouteLimiter(40, 15))
@@ -156,5 +165,8 @@ func validateRequiredEnv() {
 	}
 	if len(missing) > 0 {
 		log.Fatal(fmt.Sprintf("missing required environment variables: %v", missing))
+	}
+	if secret := os.Getenv("JWT_SECRET"); secret != "" && len(secret) < 32 {
+		log.Printf("warning: JWT_SECRET is shorter than 32 chars (len=%d) — strongly recommend a longer secret in production", len(secret))
 	}
 }

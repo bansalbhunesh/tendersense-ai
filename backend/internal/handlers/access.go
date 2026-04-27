@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"database/sql"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tendersense/backend/internal/util"
 )
 
 // UploadDataDir returns an absolute upload root (DATA_DIR or default data/uploads).
@@ -86,15 +87,15 @@ func RequireTenderOwner(db *sql.DB, c *gin.Context, tenderID string) bool {
 	var owner string
 	err := db.QueryRow(`SELECT owner_id::text FROM tenders WHERE id=$1`, tenderID).Scan(&owner)
 	if err == sql.ErrNoRows {
-		c.JSON(http.StatusNotFound, gin.H{"error": "tender not found"})
+		util.NotFound(c, "tender not found")
 		return false
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+		util.InternalError(c, "lookup failed")
 		return false
 	}
 	if owner != uid {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		util.Forbidden(c, "forbidden")
 		return false
 	}
 	return true
@@ -110,15 +111,15 @@ func RequireBidderForOwner(db *sql.DB, c *gin.Context, bidderID string) (tenderI
 		JOIN tenders t ON t.id = b.tender_id
 		WHERE b.id=$1`, bidderID).Scan(&tenderID, &owner)
 	if err == sql.ErrNoRows {
-		c.JSON(http.StatusNotFound, gin.H{"error": "bidder not found"})
+		util.NotFound(c, "bidder not found")
 		return "", false
 	}
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+		util.InternalError(c, "lookup failed")
 		return "", false
 	}
 	if owner != uid {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		util.Forbidden(c, "forbidden")
 		return "", false
 	}
 	return tenderID, true
