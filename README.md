@@ -1,160 +1,261 @@
 # TenderSense AI
 
-**AI-based tender evaluation and eligibility analysis** for government procurement — with explainable per-criterion verdicts, confidence propagation, cross-document consistency checks, human-in-the-loop review, and an immutable audit trail.
+> Explainable, auditable AI for **government tender evaluation** — built for Indian procurement realities (CRPF reference deployment).
 
-**Repository:** [github.com/bansalbhunesh/tendersense-ai](https://github.com/bansalbhunesh/tendersense-ai)
+[![CI](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-118%20passing-brightgreen)
+![go](https://img.shields.io/badge/backend-Go%201.22-00ADD8)
+![python](https://img.shields.io/badge/ai--service-FastAPI%20%7C%20Python%203.12-3776AB)
+![web](https://img.shields.io/badge/frontend-Vite%20%7C%20React%2018%20%7C%20TS%20strict-646CFF)
+![license](https://img.shields.io/badge/license-MIT-blue)
+
+```
+Tender PDF ─► OCR + Native parse ─► Structured criteria  ─┐
+                                                          ├─► Decision engine ─► PASS / FAIL / NEEDS_REVIEW
+Bidder docs ─► OCR + Evidence extract ─► Normalized facts ┘                            │  (with confidence + reasoning)
+                                                                                       ▼
+                                                                 Officer review queue • Audit log • Reasoning graph
+```
 
 ---
 
-## What it does
+## Why this matters
 
-- **Tender ingest** — Upload tender PDFs; extract text (native PDF + OCR fallback).
-- **Criteria extraction** — Structured eligibility rules. LLM with schema when `ANTHROPIC_API_KEY` is set; otherwise the deterministic extractor recognises turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting/debarment.
-- **Bidder evidence** — Parse bidder documents, normalize amounts and compliance signals.
-- **Decision engine** — Rule-based evaluation with explicit confidence. Numeric thresholds and document-presence checks emit deterministic **`PASS`**/**`FAIL`** with confidence ≥ 0.7; **`NEEDS_REVIEW`** is reserved for genuinely missing or contradictory evidence. Optional LLM cross-check augments rather than gates.
-- **Officer UI** — Dashboard with pagination, tender workspace, **reasoning graph** with verdict color-coding and click-to-detail, two-pane review queue with criterion-level overrides, audit log, in-app toast notifications.
-- **Persistence** — Evaluation jobs are persisted in Postgres (`evaluation_jobs` table) and survive backend restarts; a partial unique index prevents duplicate concurrent runs per tender.
-- **Demo pack** — Three golden PDFs + scripts under `demo/` for a repeatable live pitch.
+Indian government procurement runs on long PDFs and inconsistent evidence. Today, eligibility is decided manually — slow, hard to audit, and prone to silent error. Existing automation tools either keyword-match (brittle) or hand the decision to a black-box LLM (unauditable).
 
-## Tests
+**TenderSense AI is built around three commitments:**
 
-| Service | Suite | Count |
-|---------|-------|-------|
-| `backend/` | `go test ./...` | 44 unit/handler tests |
-| `ai-service/` | `pytest` | 45 (1 skipped if Tesseract is absent) |
-| `frontend/` | `vitest run` | 29 component/api tests |
-| `frontend/e2e/` | Playwright | 1 end-to-end smoke |
+1. **Never silently reject.** When evidence is missing or contradictory, the system surfaces `NEEDS_REVIEW` to a human officer instead of disqualifying a bidder.
+2. **Every verdict is traceable.** Each PASS/FAIL is tied to the specific clause, evidence snippet, and confidence score that produced it.
+3. **The audit trail is immutable.** Officer overrides, criteria edits, and decisions are appended to a hash-chained audit log.
 
-CI runs all four suites on every PR (`.github/workflows/ci.yml`).
+---
+
+## What you get
+
+| Capability | What's in the box |
+|---|---|
+| **Tender ingest** | Native PDF parsing → Tesseract/PaddleOCR fallback, per-page quality score |
+| **Criteria extraction** | LLM-with-schema (Anthropic Claude) when configured; deterministic regex extractor covers ~16 categories: turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting |
+| **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 PASS/FAIL without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
+| **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail), two-pane review queue with criterion-level overrides, audit log, in-app toasts |
+| **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
+| **Auth** | JWT + bcrypt, rate-limited login/eval, structured error envelope |
+| **Demo pack** | 3 deterministic golden PDFs in `demo/pdfs/` + repeatable 2-minute pitch script |
+
+---
+
+## Try it in 60 seconds (Docker)
+
+```bash
+git clone https://github.com/bansalbhunesh/tendersense-ai.git
+cd tendersense-ai
+cp .env.example .env             # set JWT_SECRET (>= 32 chars), keep ANTHROPIC_API_KEY blank for offline mode
+docker compose up --build        # backend :8080  •  ai-service :8081  •  postgres :5432  •  redis :6379
+
+# In another shell — frontend dev server:
+cd frontend && npm install && npm run dev   # http://localhost:5173
+```
+
+Open `http://localhost:5173`, register an officer account, upload one of the PDFs in `demo/pdfs/`, register two bidders, run the evaluation, and watch the reasoning graph light up.
+
+> Without `ANTHROPIC_API_KEY`, the deterministic engine still produces real `PASS`/`FAIL` verdicts on the demo PDFs — no degraded "all NEEDS_REVIEW" experience.
+
+---
+
+## Architecture
+
+```
+                              ┌──────────────────────────┐
+                              │  Frontend (Vite + React) │
+                              │  React Router • Toasts   │
+                              │  Reasoning graph (SVG)   │
+                              └──────────────┬───────────┘
+                                             │ HTTPS + JWT
+                              ┌──────────────▼───────────┐
+                              │ Backend (Go / Gin)       │
+                              │ • Auth, RBAC, rate-limit │
+                              │ • Tender / bidder CRUD   │      ┌─────────────┐
+                              │ • Eval orchestration ────┼─────►│ Postgres    │
+                              │ • Audit log + reviews    │      │ + eval_jobs │
+                              └──────────────┬───────────┘      └─────────────┘
+                                             │ HTTP (internal)
+                              ┌──────────────▼───────────┐      ┌─────────────┐
+                              │ AI service (FastAPI)     │      │ Redis (opt) │
+                              │ • OCR pipeline           ├─────►│ cache layer │
+                              │ • Criteria extractor     │      └─────────────┘
+                              │ • Decision engine        │
+                              └──────────────┬───────────┘
+                                             │ optional
+                              ┌──────────────▼───────────┐
+                              │ Anthropic Claude (LLM)   │
+                              │  cross-check augmentation│
+                              └──────────────────────────┘
+```
+
+**Three services, one repo.** No multi-repo coordination; each service has its own Dockerfile and tests.
 
 ---
 
 ## Repository layout
 
-| Path | Description |
-|------|-------------|
-| `backend/` | Go (Gin) REST API, PostgreSQL migrations, JWT auth; orchestrates evaluation via the AI service. |
-| `ai-service/` | FastAPI: OCR (pdfplumber → PaddleOCR / Tesseract), criteria extraction, decision engine. |
-| `frontend/` | Vite + React + TypeScript officer UI. |
-| `docs/` | Round 1 written submission (`CRPF_ROUND1_SUBMISSION.md`). |
-| `demo/` | PDF generator, **prebuilt PDFs** in `demo/pdfs/`, verification script, live demo script. |
-
-This is a **monorepo** (one clone, three services). You do **not** need three separate Git repositories.
-
----
-
-## Quick start (clone)
-
-```bash
-git clone https://github.com/bansalbhunesh/tendersense-ai.git
-cd tendersense-ai
+```
+.
+├── backend/         Go 1.22 • Gin • PostgreSQL migrations • JWT auth • 44 tests
+├── ai-service/      FastAPI • OCR (pdfplumber/Tesseract) • criteria + decision engine • 45 tests
+├── frontend/        Vite • React 18 • TS strict • Toasts • Reasoning graph • 29 unit tests + Playwright e2e
+├── demo/            generate_demo_pdfs.py • 3 prebuilt PDFs • 2-minute live demo script
+├── docs/            CRPF Round 1 written submission • observability notes
+├── docker-compose.yml
+└── .github/workflows/ci.yml   4-job CI matrix
 ```
 
-Then follow **Local development** below. Copy `backend/.env.example` to `backend/.env` and adjust `DATABASE_URL`, `JWT_SECRET`, and `AI_SERVICE_URL`.
+---
+
+## Test matrix
+
+| Suite | Command | Count |
+|---|---|---|
+| Backend unit + handler | `cd backend && go test ./...` | **44 pass** |
+| AI service | `cd ai-service && pytest -q` | **45 pass / 1 skip** (Tesseract-only path) |
+| Frontend unit | `cd frontend && npm test` | **29 pass** |
+| Playwright e2e (register → tender → eval) | `cd frontend && npm run test:e2e` | 1 smoke |
+
+Every PR runs all four jobs in `.github/workflows/ci.yml`.
 
 ---
 
-## Round 1 document + demo PDFs
+## API surface (selected)
 
-- **Written submission (problem, architecture, risks, Round 2 plan):** [docs/CRPF_ROUND1_SUBMISSION.md](docs/CRPF_ROUND1_SUBMISSION.md)
-- **Regenerate demo PDFs (optional; committed copies already exist in `demo/pdfs/`):**
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/api/v1/auth/register`, `/auth/login` | JWT bearer; rate-limited |
+| `GET`/`POST` | `/api/v1/tenders` | `?limit=&offset=`, `X-Total-Count` header |
+| `POST` | `/api/v1/tenders/:id/documents` | Upload tender PDF |
+| `POST` | `/api/v1/tenders/:id/bidders` | Register bidder |
+| `POST` | `/api/v1/tenders/:id/evaluate` | Trigger async evaluation; returns `job_id` |
+| `GET` | `/api/v1/tenders/:id/evaluate/jobs/:job` | Poll job status (DB-backed; survives restart) |
+| `GET` | `/api/v1/tenders/:id/results` | Per-bidder verdicts + reasoning |
+| `GET`/`POST` | `/api/v1/review/queue`, `/review/override` | Officer review workflow |
+| `GET` | `/api/v1/audit` | Append-only audit log |
+| `GET` | `/api/v1/version` | `{ version, commit }` |
 
-  ```bash
-  cd demo
-  pip install -r requirements.txt
-  python generate_demo_pdfs.py
-  python verify_demo_pdfs.py
-  ```
-
-- **Live pitch walkthrough:** [demo/DEMO_SCRIPT.md](demo/DEMO_SCRIPT.md)
+**Error shape (4xx/5xx):** `{ "error": { "code": "bad_request", "message": "...", "request_id": "..." } }`
 
 ---
 
-## Local development
+## Configuration
 
-### 1. PostgreSQL
+| Variable | Service | Default | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | Backend | — | Postgres DSN |
+| `JWT_SECRET` | Backend | — | **Required.** ≥ 32 chars (warns below) |
+| `ALLOWED_ORIGINS` | Backend, AI | — | CSV list of allowed CORS origins |
+| `AI_SERVICE_URL` | Backend | `http://localhost:8081` | AI service base URL |
+| `DATA_DIR` | Backend, AI | `data/uploads` | Shared upload root (path-traversal-locked in AI service) |
+| `ANTHROPIC_API_KEY` | AI | _empty_ | Optional. Without it, deterministic engine runs |
+| `ANTHROPIC_MODEL` | AI | `claude-sonnet-4-20250514` | Override the cross-check model |
+| `REDIS_URL` | AI | _empty_ | Optional cache; silent no-op when unset |
+| `EVALUATE_CACHE_TTL_SECONDS` | AI | `900` | Eval result cache TTL |
+| `GIT_SHA` | Both | _empty_ | Surfaced via `/version` endpoints |
+| `VITE_DEMO_EMAIL`, `VITE_DEMO_PASSWORD` | Frontend (dev only) | _empty_ | Populates a "Fill demo creds" button in dev builds; never committed |
 
-Create a database (or use Docker):
+Local dev env files: `backend/.env.example` and root `.env.example` (for compose).
 
+---
+
+## Local development (per service)
+
+### Postgres
 ```bash
 docker compose up -d db
+# default DSN: postgres://tendersense:tendersense@localhost:5432/tendersense?sslmode=disable
 ```
 
-Default URL used by the backend if unset:  
-`postgres://tendersense:tendersense@localhost:5432/tendersense?sslmode=disable`
-
-### 2. AI service (port 8081)
-
+### AI service (`:8081`)
 ```bash
 cd ai-service
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-# Optional: export ANTHROPIC_API_KEY=...  # stronger criteria extraction
-uvicorn main:app --reload --port 8081
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+DATA_DIR=$(pwd)/data ALLOWED_ORIGINS='*' uvicorn main:app --reload --port 8081
 ```
+> Note: pinned `pydantic-core` requires Python ≤ 3.12. Use `python3.12` for the venv.
 
-### 3. Backend (port 8080)
-
+### Backend (`:8080`)
 ```bash
 cd backend
-cp .env.example .env
+cp .env.example .env   # set JWT_SECRET
 go run .
 ```
 
-### 4. Frontend (port 5173)
-
+### Frontend (`:5173`)
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev    # Vite proxies /api → http://127.0.0.1:8080
 ```
-
-The Vite dev server proxies `/api` to `http://127.0.0.1:8080`.
 
 ---
 
-## Docker (API + AI + Postgres)
+## Demo walkthrough
 
+The 2-minute live pitch is scripted in [`demo/DEMO_SCRIPT.md`](demo/DEMO_SCRIPT.md). Key beats:
+
+1. **Upload `01_TENDER_CRPF_DEMO.pdf`** → criteria populate (turnover ≥ ₹5 Cr, similar projects ≥ 3, GST mandatory, ISO optional, …).
+2. **Bidder A** uploads `02_BIDDER_ACME_ELIGIBLE.pdf` → all green PASS.
+3. **Bidder B** uploads `03_BIDDER_BETA_CONFLICT.pdf` → **NEEDS_REVIEW** with `CONFLICT_DETECTED` (turnover appears as both ₹5.23 Cr and ₹3.10 Cr in the same pack).
+4. Open the **reasoning graph** → click any node to see the evidence snippet + confidence.
+5. Open the **review queue** → officer overrides Bidder B's verdict; the **audit log** gets a new immutable row with the previous and new state.
+
+Regenerate PDFs:
 ```bash
-cp .env.example .env   # set JWT_SECRET (32+ chars) and ALLOWED_ORIGINS
-docker compose up --build
+cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && python verify_demo_pdfs.py
 ```
 
-The frontend is not included in Compose by default; run it locally with `npm run dev` in `frontend/`, or extend `docker-compose.yml` with a Node service if you prefer.
+---
+
+## Verdict states
+
+| State | When | Confidence |
+|---|---|---|
+| **`PASS`** | Numeric threshold met or required document present | ≥ 0.7 |
+| **`FAIL`** | Numeric threshold violated or required document absent | ≥ 0.7 |
+| **`NEEDS_REVIEW`** | Evidence absent / contradictory / OCR confidence too low | < 0.6 or conflict flag |
+
+**Confidence < 0.6 always routes to a human.** That's the contract.
 
 ---
 
-## Environment variables (summary)
+## Security posture
 
-| Variable | Service | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | Backend | PostgreSQL connection string |
-| `JWT_SECRET` | Backend | Signing key for JWTs (32+ chars; warns below that) |
-| `ALLOWED_ORIGINS` | Backend / AI | Comma-separated allowed CORS origins |
-| `AI_SERVICE_URL` | Backend | Base URL of the Python service (e.g. `http://localhost:8081`) |
-| `ANTHROPIC_API_KEY` | AI (optional) | Claude cross-check; deterministic engine works without it |
-| `DATA_DIR` | Backend / AI | Shared upload directory (path-traversal-locked in AI service) |
-| `REDIS_URL` | AI (optional) | OCR/criteria/evaluation cache; silent no-op when unset |
-| `GIT_SHA` | Both (optional) | Surfaced via `GET /api/v1/version` and `/v1/version` |
-| `VITE_DEMO_EMAIL`, `VITE_DEMO_PASSWORD` | Frontend (dev only) | Populates a "Fill demo creds" button on the auth page in dev builds; never committed |
-| `PORT` | Backend / AI | Listen port (default 8080 / 8081) |
+- JWT signed with HS256; `JWT_SECRET` length validated at boot.
+- Rate limiting on `/auth/*` and `/evaluate`.
+- Path-traversal protection on all file ops (`../../etc/passwd`-style inputs return 403).
+- `ALLOWED_ORIGINS` enforced — wildcard CORS will not start the backend.
+- bcrypt for passwords; structured error envelope avoids leaking internals.
+- No demo credentials in source — only via `VITE_DEMO_*` in dev.
 
 ---
 
-## Demo tips
+## Roadmap (honest list)
 
-- Prefer the **three PDFs** in `demo/pdfs/` for judging; avoid untested live OCR.
-- Show: **conflict** → `NEEDS_REVIEW`, **reasoning graph**, **reviewer override** → **audit checksum**.
+**Production-readiness gaps that ship-blocked us for a hackathon submission but matter for actual deployment:**
 
----
-
-## Pitch line
-
-Government tender evaluation today produces outcomes that cannot be explained and cannot be audited. TenderSense AI does not only automate the decision — it automates the justification.
+- 🇮🇳 **Indic-language tenders.** Today the extractor is English-only. Hindi + regional language support via Bhashini / IndicTrans2 / IndicBERT is the next high-impact unlock.
+- 🧠 **Domain-tuned model.** Replace generic Claude cross-check with a model fine-tuned on a curated Indian tender corpus.
+- 📈 **Throughput.** Single-process eval works for demo scale; production needs a worker queue (NATS/Kafka) and horizontal eval workers.
+- 🔐 **RBAC.** Today a logged-in officer sees everything. Add tender-scoped roles (creator / reviewer / auditor).
+- 📦 **Object storage.** Uploads are on shared volume; S3/MinIO with presigned URLs for production.
+- 📊 **Metrics + tracing.** Logs only today. Prometheus + OpenTelemetry traces + dashboards.
+- 📱 **Mobile-friendly UI.** Officers in the field need it.
+- 🧾 **PII redaction.** Bidder docs contain PAN/Aadhaar — needs deterministic redaction before logging.
 
 ---
 
 ## License
 
-Specify your license here (e.g. MIT) if you publish one for the hackathon.
+MIT. See [LICENSE](LICENSE) if/when added.
+
+## Acknowledgements
+
+Built for the **AI for Bharat** hackathon — Round 1 written submission for the CRPF tender-evaluation challenge is in [`docs/CRPF_ROUND1_SUBMISSION.md`](docs/CRPF_ROUND1_SUBMISSION.md).
