@@ -23,12 +23,22 @@ export default function AuthPage() {
     if (token()) nav("/app");
   }, [nav]);
 
+  function validate(): string | null {
+    if (!email.trim()) return "Email is required.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Enter a valid email address.";
+    if (!password) return "Password is required.";
+    if (password.length < 8) return "Password must be at least 8 characters.";
+    return null;
+  }
+
   async function onLogin(e: FormEvent) {
     e.preventDefault();
+    const validationError = validate();
+    if (validationError) { setErr(validationError); return; }
     setBusy(true);
     setErr(null);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       nav("/app");
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
@@ -41,10 +51,12 @@ export default function AuthPage() {
 
   async function onRegister(e: FormEvent) {
     e.preventDefault();
+    const validationError = validate();
+    if (validationError) { setErr(validationError); return; }
     setBusy(true);
     setErr(null);
     try {
-      await register(email, password);
+      await register(email.trim(), password);
       nav("/app");
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
@@ -119,7 +131,7 @@ export default function AuthPage() {
         <div className="panel">
           <h1>{t("auth.title")}</h1>
           <p className="muted">{t("auth.subtitle")}</p>
-          <form style={{ marginTop: 24 }} onSubmit={(e) => e.preventDefault()}>
+          <form style={{ marginTop: 24 }} onSubmit={onLogin}>
             <label>{t("auth.departmentEmail")}</label>
             <input
               data-testid="auth-email"
@@ -136,6 +148,9 @@ export default function AuthPage() {
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
             />
+            <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 4 }}>
+              Minimum 8 characters
+            </p>
             {err && (
               <p
                 className="mono"
@@ -146,10 +161,10 @@ export default function AuthPage() {
               </p>
             )}
             <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
-              <button data-testid="auth-login" className="primary" style={{ flex: 1 }} disabled={busy} onClick={onLogin}>
+              <button data-testid="auth-login" type="submit" className="primary" style={{ flex: 1 }} disabled={busy}>
                 {t("auth.signIn")}
               </button>
-              <button data-testid="auth-register" className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
+              <button data-testid="auth-register" type="button" className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
                 {t("auth.register")}
               </button>
             </div>
