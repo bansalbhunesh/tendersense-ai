@@ -12,6 +12,7 @@ from app.cache import cache_get_json, cache_set_json, stable_hash_key
 from app.criteria_extractor import extract_criteria as extract_criteria_lang_aware
 from app.decision_engine import run_evaluation
 from app.ocr_pipeline import OCRResult, process_path
+from app.pii import install_redaction
 from app.translation import (
     _devanagari_ratio,
     detect_language,
@@ -20,12 +21,14 @@ from app.translation import (
 )
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging — PII redaction filter is attached to the root logger so every
+# emission (incl. uvicorn / fastapi / httpx) is sanitised before stdout.
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+install_redaction(logging.getLogger())
 logger = logging.getLogger("tendersense-ai")
 
 
