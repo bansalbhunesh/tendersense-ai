@@ -12,6 +12,13 @@ type Ambiguity = {
   conflict?: number;
 };
 
+type ConflictSnapshot = {
+  document: string;
+  doc_type?: string;
+  normalized_value: number;
+  raw_text?: string;
+};
+
 type DecisionTrace = {
   field?: string;
   operator?: string;
@@ -20,6 +27,7 @@ type DecisionTrace = {
   source_doc?: string;
   evidence_count?: number;
   mode?: string;
+  conflicting_snapshots?: ConflictSnapshot[];
 };
 
 export type Decision = Record<string, unknown> & {
@@ -348,14 +356,26 @@ function ConflictCard({
   snap,
   confidence,
   criterionLabel,
+  conflictSnapshots,
 }: {
   trace: DecisionTrace;
   snap?: EvidenceSnap;
   confidence: number;
   criterionLabel: string;
+  conflictSnapshots?: ConflictSnapshot[];
 }) {
   const field = trace.field || "criterion";
   const count = trace.evidence_count || 2;
+  const snapA = conflictSnapshots?.[0];
+  const snapB = conflictSnapshots?.[1];
+  const hasReal = Boolean(snapA && snapB);
+  const pct = hasReal
+    ? Math.round(
+        (Math.abs(snapA!.normalized_value - snapB!.normalized_value) /
+          Math.max(snapA!.normalized_value, snapB!.normalized_value)) *
+          100,
+      )
+    : 0;
 
   return (
     <div
@@ -428,13 +448,16 @@ function ConflictCard({
               borderRadius: 8,
               background: "rgba(239,68,68,0.06)",
               border: "1px solid rgba(239,68,68,0.25)",
+              textAlign: "center",
             }}
           >
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4 }}>
-              Source A · {snap?.document || "Document 1"}
+              {hasReal ? snapA!.document || "Document A" : snap?.document || "Document A"}
             </div>
-            <div className="mono" style={{ fontSize: "0.78rem", color: "#fca5a5" }}>
-              {snap?.extracted_value || snap?.evidence_quote || `${field} value (Document A)`}
+            <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#fca5a5" }}>
+              {hasReal
+                ? formatINR(snapA!.normalized_value)
+                : snap?.extracted_value || snap?.evidence_quote || `${field} value`}
             </div>
           </div>
 
@@ -446,17 +469,17 @@ function ConflictCard({
               gap: 3,
             }}
           >
-            <div style={{ fontSize: "0.8rem", color: "#ef4444" }}>↔</div>
+            <div style={{ fontSize: "1.2rem", color: "#ef4444", lineHeight: 1 }}>↔</div>
             <div
               style={{
-                fontSize: "0.6rem",
+                fontSize: "0.58rem",
                 color: "#ef4444",
-                fontWeight: 700,
+                fontWeight: 800,
                 textAlign: "center",
                 lineHeight: 1.3,
               }}
             >
-              MISMATCH
+              {hasReal ? `${pct}% GAP` : "MISMATCH"}
             </div>
           </div>
 
@@ -466,13 +489,14 @@ function ConflictCard({
               borderRadius: 8,
               background: "rgba(239,68,68,0.06)",
               border: "1px solid rgba(239,68,68,0.25)",
+              textAlign: "center",
             }}
           >
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4 }}>
-              Source B · Document 2
+              {hasReal ? snapB!.document || "Document B" : "Document B"}
             </div>
-            <div className="mono" style={{ fontSize: "0.78rem", color: "#fca5a5" }}>
-              {`${field} value differs from Source A`}
+            <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#fca5a5" }}>
+              {hasReal ? formatINR(snapB!.normalized_value) : `${field} value (conflict)`}
             </div>
           </div>
         </div>
@@ -634,12 +658,18 @@ export default function DecisionCard({
   }
 
   if (reason === "CONFLICT_DETECTED") {
+    const snapshots = (
+      (decision.conflict_snapshots as ConflictSnapshot[] | undefined) ??
+      trace.conflicting_snapshots ??
+      []
+    );
     return (
       <ConflictCard
         trace={trace}
         snap={snap}
         confidence={confidence}
         criterionLabel={criterionLabel}
+        conflictSnapshots={snapshots}
       />
     );
   }

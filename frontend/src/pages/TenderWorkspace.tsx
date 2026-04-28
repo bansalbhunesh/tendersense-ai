@@ -5,7 +5,7 @@ import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
 import AppHeader from "../components/AppHeader";
 import BidderScoreboard from "../components/BidderScoreboard";
 import ContradictionAlert from "../components/ContradictionAlert";
-import ContradictionModal from "../components/ContradictionModal";
+import ContradictionModal, { type ConflictData } from "../components/ContradictionModal";
 import DecisionCard from "../components/DecisionCard";
 import EvaluationPipeline from "../components/EvaluationPipeline";
 import ReasoningGraph from "../components/ReasoningGraph";
@@ -51,13 +51,7 @@ export default function TenderWorkspace() {
     "ALL",
   );
   const [resultsSearch, setResultsSearch] = useState("");
-  const [contradictionModal, setContradictionModal] = useState<{
-    bidderName: string;
-    criterionLabel: string;
-    field: string;
-    confidence: number;
-    evidenceCount: number;
-  } | null>(null);
+  const [contradictionModal, setContradictionModal] = useState<ConflictData | null>(null);
   const [justEvaled, setJustEvaled] = useState(false);
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
@@ -214,6 +208,16 @@ export default function TenderWorkspace() {
     return m;
   }, [criteriaList]);
 
+  const criterionDataById = useMemo(() => {
+    const m = new Map<string, Record<string, unknown>>();
+    for (const raw of criteriaList) {
+      const c = raw as Record<string, unknown>;
+      const id = String(c.id || "");
+      if (id) m.set(id, c);
+    }
+    return m;
+  }, [criteriaList]);
+
   async function runEval() {
     const startedAt = Date.now();
     setBusy(true);
@@ -298,6 +302,12 @@ export default function TenderWorkspace() {
     const trace = (conflict.decision_trace as Record<string, unknown>) ?? {};
     const bid = String(conflict.bidder_id || "");
     const cid = String(conflict.criterion_id || "");
+    const cData = criterionDataById.get(cid) || {};
+    const snapshots = (
+      (conflict.conflict_snapshots as unknown[]) ??
+      (trace.conflicting_snapshots as unknown[]) ??
+      []
+    ) as Array<{ document: string; doc_type?: string; normalized_value: number; raw_text?: string }>;
     const delay = window.setTimeout(() => {
       setContradictionModal({
         bidderName: bidderNameMap.get(bid) || bid.slice(0, 14) || "Unknown bidder",
@@ -305,6 +315,9 @@ export default function TenderWorkspace() {
         field: String(trace.field || "financial criterion"),
         confidence: Number(conflict.confidence ?? 0.51),
         evidenceCount: Number(trace.evidence_count ?? 2),
+        operator: String(cData.operator || ">="),
+        threshold: Number(cData.value ?? 0),
+        conflictSnapshots: snapshots,
       });
     }, 700);
     return () => window.clearTimeout(delay);

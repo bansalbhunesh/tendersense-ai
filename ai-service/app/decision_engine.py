@@ -75,6 +75,14 @@ def source_priority_index(doc_type: str, priority: list[str]) -> float:
         return 0.5
 
 
+def _fmt_inr(val: float) -> str:
+    if val >= 1e7:
+        return f"₹{val / 1e7:.2f} Cr"
+    if val >= 1e5:
+        return f"₹{val / 1e5:.1f} L"
+    return f"₹{val:,.0f}"
+
+
 def normalize_inr_from_text(text: str) -> list[tuple[float, float, str]]:
     """Return list of (value_inr, local_confidence, snippet)."""
     out: list[tuple[float, float, str]] = []
@@ -605,14 +613,36 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
 
         if any(e.conflicts_with for e in evs):
             ids = [e.id for e in evs]
+            # Surface real values so the UI can show exact figures, not placeholders
+            conflict_snapshots = [
+                {
+                    "document": e.filename,
+                    "doc_type": e.doc_type,
+                    "normalized_value": e.normalized_value,
+                    "raw_text": e.raw_text[:200],
+                }
+                for e in evs[:4]
+            ]
+            vals_readable = " vs ".join(
+                _fmt_inr(e.normalized_value) for e in evs[:3]
+            )
             return {
                 "criterion_id": crit_id, "bidder_id": bidder_id,
                 "verdict": "NEEDS_REVIEW", "reason": "CONFLICT_DETECTED",
                 "confidence": 0.51, "evidence_used": ids[:1], "evidence_conflicting": ids,
                 "reviewer_required": True,
-                "reasoning": "Conflicting values detected across documents.",
+                "reasoning": (
+                    f"Conflicting {field_name} values detected across documents: "
+                    f"{vals_readable}. Cannot auto-decide — requires officer verification."
+                ),
+                "conflict_snapshots": conflict_snapshots,
                 "ambiguity": {"extraction": 0.0, "semantic": sem_amb, "conflict": 1.0},
-                "decision_trace": {"mode": "deterministic", "field": field_name, "evidence_count": len(evs)},
+                "decision_trace": {
+                    "mode": "deterministic",
+                    "field": field_name,
+                    "evidence_count": len(evs),
+                    "conflicting_snapshots": conflict_snapshots,
+                },
             }
 
         best = select_best_evidence(evs, priority)
