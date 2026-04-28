@@ -3,7 +3,9 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
 import AppHeader from "../components/AppHeader";
+import BidderScoreboard from "../components/BidderScoreboard";
 import ContradictionAlert from "../components/ContradictionAlert";
+import ContradictionModal from "../components/ContradictionModal";
 import DecisionCard from "../components/DecisionCard";
 import EvaluationPipeline from "../components/EvaluationPipeline";
 import ReasoningGraph from "../components/ReasoningGraph";
@@ -49,6 +51,14 @@ export default function TenderWorkspace() {
     "ALL",
   );
   const [resultsSearch, setResultsSearch] = useState("");
+  const [contradictionModal, setContradictionModal] = useState<{
+    bidderName: string;
+    criterionLabel: string;
+    field: string;
+    confidence: number;
+    evidenceCount: number;
+  } | null>(null);
+  const [justEvaled, setJustEvaled] = useState(false);
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
@@ -258,6 +268,7 @@ export default function TenderWorkspace() {
       const took = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       setMsg(t("workspace.evalFinished", { seconds: took }));
       toast.success(t("workspace.evalFinishedToast", { seconds: took }));
+      setJustEvaled(true);
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
@@ -275,6 +286,30 @@ export default function TenderWorkspace() {
     const ti = window.setInterval(() => setEvalElapsed((s) => s + 1), 1000);
     return () => window.clearInterval(ti);
   }, [evalRunning]);
+
+  // Fire contradiction modal once after a live evaluation that found conflicts
+  useEffect(() => {
+    if (!justEvaled || !results) return;
+    setJustEvaled(false);
+    const conflict = results.decisions.find(
+      (d) => String((d as Record<string, unknown>).reason) === "CONFLICT_DETECTED",
+    ) as (Record<string, unknown> & Decision) | undefined;
+    if (!conflict) return;
+    const trace = (conflict.decision_trace as Record<string, unknown>) ?? {};
+    const bid = String(conflict.bidder_id || "");
+    const cid = String(conflict.criterion_id || "");
+    const delay = window.setTimeout(() => {
+      setContradictionModal({
+        bidderName: bidderNameMap.get(bid) || bid.slice(0, 14) || "Unknown bidder",
+        criterionLabel: criterionLabelById.get(cid) || cid,
+        field: String(trace.field || "financial criterion"),
+        confidence: Number(conflict.confidence ?? 0.51),
+        evidenceCount: Number(trace.evidence_count ?? 2),
+      });
+    }, 700);
+    return () => window.clearTimeout(delay);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justEvaled, results]);
 
   useEffect(() => {
     if (!msg) return;
@@ -616,8 +651,23 @@ export default function TenderWorkspace() {
         </>
       )}
 
+      {contradictionModal && (
+        <ContradictionModal
+          data={contradictionModal}
+          onViewAnalysis={() => {
+            setContradictionModal(null);
+            setTab("results");
+          }}
+          onDismiss={() => setContradictionModal(null)}
+        />
+      )}
+
       {tab === "results" && (
         <>
+          <BidderScoreboard
+            decisions={results?.decisions ?? []}
+            bidders={bidders}
+          />
           <RiskScorePanel decisions={results?.decisions ?? []} />
           <ContradictionAlert
             decisions={results?.decisions ?? []}
@@ -688,11 +738,13 @@ export default function TenderWorkspace() {
                 const cid = String(dd.criterion_id || "");
                 const critTitle = criterionLabelById.get(cid) || cid;
                 return (
-                  <DecisionCard
+                  <div
                     key={idx}
-                    decision={dd}
-                    criterionLabel={critTitle}
-                  />
+                    className="decision-card-enter"
+                    style={{ animationDelay: `${idx * 0.06}s` }}
+                  >
+                    <DecisionCard decision={dd} criterionLabel={critTitle} />
+                  </div>
                 );
               })}
             </div>

@@ -87,6 +87,44 @@ export default function Dashboard() {
         }
       />
 
+      {/* Bharat impact stat bar */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        {[
+          { value: "6.3 Cr", label: "MSMEs in India", sub: "Small businesses eligible for public tenders" },
+          { value: "₹3L Cr+", label: "Annual public procurement", sub: "Government spending evaluated manually today" },
+          { value: "0%", label: "Explainable AI in use", sub: "No auditable AI in Indian procurement — until now" },
+        ].map(({ value, label, sub }) => (
+          <div
+            key={label}
+            className="panel"
+            style={{ textAlign: "center", padding: "18px 16px" }}
+          >
+            <div
+              style={{
+                fontSize: "1.8rem",
+                fontWeight: 900,
+                letterSpacing: "-0.02em",
+                background: "linear-gradient(135deg, #f59e0b, #fbbf24)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                marginBottom: 4,
+              }}
+            >
+              {value}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: "0.82rem", marginBottom: 3 }}>{label}</div>
+            <div className="muted" style={{ fontSize: "0.72rem", lineHeight: 1.4 }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
       <div className="grid2">
         <div className="panel">
           <h2>{t("dashboard.newTender")}</h2>
