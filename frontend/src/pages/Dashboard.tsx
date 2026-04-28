@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta } from "../api";
 import AppHeader from "../components/AppHeader";
 import { useToast } from "../components/ToastProvider";
@@ -10,7 +11,8 @@ type TenderRow = { id: string; title: string; status: string; created_at: string
 const PAGE_SIZES = [25, 50, 100] as const;
 
 export default function Dashboard() {
-  useDocumentTitle("Officer dashboard · TenderSense AI");
+  useDocumentTitle("dashboard.documentTitle");
+  const { t } = useTranslation();
   const toast = useToast();
   const [title, setTitle] = useState("Construction services — eligibility screening");
   const [description, setDescription] = useState("Hackathon demo tender");
@@ -30,7 +32,7 @@ export default function Dashboard() {
       setTotalCount(count);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      toast.error(`Failed to load tenders: ${message}`);
+      toast.error(t("dashboard.loadFailed", { message }));
     } finally {
       setLoading(false);
     }
@@ -49,7 +51,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description }),
       });
-      toast.success("Tender workspace created.");
+      toast.success(t("dashboard.tenderCreated"));
       setTitle("");
       setDescription("");
       // Reset to first page so freshly created tender is visible.
@@ -57,7 +59,7 @@ export default function Dashboard() {
       else await load(0, pageSize);
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
-      toast.error(`Could not create tender: ${message}`);
+      toast.error(t("dashboard.createFailed", { message }));
     }
   }
 
@@ -65,45 +67,44 @@ export default function Dashboard() {
   const canPrev = offset > 0;
   const canNext = totalCount != null && offset + rows.length < totalCount;
   const totalLabel =
-    totalCount != null ? `${totalCount} Total` : `${rows.length} loaded`;
+    totalCount != null
+      ? t("dashboard.totalCount", { count: totalCount })
+      : t("dashboard.loadedCount", { count: rows.length });
 
   return (
     <div className="shell">
       <AppHeader
         left={
           <>
-            <strong>TenderSense AI</strong>
-            <span>Officer dashboard</span>
+            <strong>{t("common.appName")}</strong>
+            <span>{t("dashboard.headerSubtitle")}</span>
           </>
         }
         actions={
           <Link to="/review">
-            <button className="ghost">Review queue</button>
+            <button className="ghost">{t("common.reviewQueueButton")}</button>
           </Link>
         }
       />
 
       <div className="grid2">
         <div className="panel">
-          <h2>New tender</h2>
+          <h2>{t("dashboard.newTender")}</h2>
           <form onSubmit={create}>
-            <label>Title</label>
+            <label>{t("dashboard.title")}</label>
             <input data-testid="tender-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
             <div style={{ height: 10 }} />
-            <label>Description</label>
+            <label>{t("dashboard.description")}</label>
             <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
             <div style={{ height: 12 }} />
             <button data-testid="tender-create" className="primary" type="submit">
-              Create tender workspace
+              {t("dashboard.createTender")}
             </button>
           </form>
         </div>
         <div className="panel">
-          <h2>Pipeline</h2>
-          <p className="muted">
-            Ingest → OCR / parse → criteria extraction → decision engine with confidence propagation → reasoning
-            graph → immutable audit log. Ambiguous cases never silently disqualify.
-          </p>
+          <h2>{t("dashboard.pipeline")}</h2>
+          <p className="muted">{t("dashboard.pipelineCopy")}</p>
         </div>
       </div>
 
@@ -111,28 +112,28 @@ export default function Dashboard() {
 
       <div className="panel" style={{ marginTop: 24 }}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-          <h2>Active Tenders</h2>
+          <h2>{t("dashboard.activeTenders")}</h2>
           <span className="badge ok" data-testid="tenders-total">{totalLabel}</span>
         </div>
         <table className="table">
           <thead>
             <tr>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Action</th>
+              <th>{t("dashboard.tableTitle")}</th>
+              <th>{t("dashboard.tableStatus")}</th>
+              <th>{t("dashboard.tableAction")}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
-                  Loading tenders…
+                  {t("dashboard.loadingTenders")}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted" data-testid="tenders-empty">
-                  No active tenders found. Create your first workspace above.
+                  {t("dashboard.empty")}
                 </td>
               </tr>
             ) : (
@@ -145,7 +146,7 @@ export default function Dashboard() {
                   <td>
                     <Link to={`/tender/${r.id}`}>
                       <button className="ghost" style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
-                        Open Workspace →
+                        {t("dashboard.openWorkspace")}
                       </button>
                     </Link>
                   </td>
@@ -162,7 +163,7 @@ export default function Dashboard() {
             style={{ marginTop: 16, justifyContent: "space-between" }}
           >
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <label htmlFor="tender-page-size" style={{ margin: 0 }}>Page size</label>
+              <label htmlFor="tender-page-size" style={{ margin: 0 }}>{t("common.pageSize")}</label>
               <select
                 id="tender-page-size"
                 data-testid="tenders-page-size"
@@ -181,7 +182,11 @@ export default function Dashboard() {
             </div>
             <div className="row" style={{ gap: 8 }}>
               <span className="muted" style={{ fontSize: "0.85rem" }}>
-                {offset + 1}-{offset + rows.length} of {totalCount}
+                {t("dashboard.rangeOf", {
+                  start: offset + 1,
+                  end: offset + rows.length,
+                  total: totalCount,
+                })}
               </span>
               <button
                 type="button"
@@ -190,7 +195,7 @@ export default function Dashboard() {
                 disabled={!canPrev}
                 onClick={() => setOffset(Math.max(0, offset - pageSize))}
               >
-                Prev
+                {t("common.prev")}
               </button>
               <button
                 type="button"
@@ -199,7 +204,7 @@ export default function Dashboard() {
                 disabled={!canNext}
                 onClick={() => setOffset(offset + pageSize)}
               >
-                Next
+                {t("common.next")}
               </button>
             </div>
           </div>

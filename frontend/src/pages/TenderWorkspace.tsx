@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
 import AppHeader from "../components/AppHeader";
 import ReasoningGraph from "../components/ReasoningGraph";
@@ -20,7 +21,8 @@ const PAGE_SIZES = [25, 50, 100] as const;
 export default function TenderWorkspace() {
   const { id } = useParams();
   const tenderId = id!;
-  useDocumentTitle("Tender workspace · TenderSense AI");
+  useDocumentTitle("workspace.documentTitle");
+  const { t } = useTranslation();
   const toast = useToast();
   const [tab, setTab] = useState<"docs" | "bidders" | "run" | "results">("docs");
   const [tender, setTender] = useState<Record<string, unknown> | null>(null);
@@ -48,7 +50,7 @@ export default function TenderWorkspace() {
     if (!opts?.silent) setPageLoading(true);
     try {
       const biddersUrl = `/tenders/${tenderId}/bidders?limit=${bidderPageSize}&offset=${bidderOffset}`;
-      const [t, bRes, r] = await Promise.all([
+      const [tt, bRes, r] = await Promise.all([
         apiFetch(`/tenders/${tenderId}`) as Promise<Record<string, unknown>>,
         apiFetchWithMeta<{ bidders: { id: string; name: string }[] }>(biddersUrl),
         apiFetch(`/tenders/${tenderId}/results`).catch(() => null) as Promise<{
@@ -56,7 +58,7 @@ export default function TenderWorkspace() {
           graph: Record<string, unknown> | null;
         } | null>,
       ]);
-      setTender(t);
+      setTender(tt);
       const bl = bRes.data?.bidders || [];
       setBidders(bl);
       setBidderTotal(bRes.totalCount);
@@ -68,7 +70,7 @@ export default function TenderWorkspace() {
       } else {
         setResults(null);
       }
-      const crit = ((t.criteria as unknown[]) || []).length;
+      const crit = ((tt.criteria as unknown[]) || []).length;
       return { criteriaCount: crit, bidderCount: bl.length };
     } finally {
       if (!opts?.silent) setPageLoading(false);
@@ -78,7 +80,7 @@ export default function TenderWorkspace() {
   useEffect(() => {
     void refresh().catch((e) => {
       const message = e instanceof Error ? e.message : String(e);
-      toast.error(`Failed to load workspace: ${message}`);
+      toast.error(t("workspace.loadFailed", { message }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenderId, bidderOffset, bidderPageSize]);
@@ -105,19 +107,27 @@ export default function TenderWorkspace() {
       if (textLen < 40 || qs < 0.12) {
         setMsgType("warning");
         setMsg(
-          `Saved, but OCR text is sparse (${textLen} chars, quality ${qs.toFixed(2)}). Criteria in workspace: ${criteriaCount}. Try a text-based PDF or higher-resolution scans.`,
+          t("workspace.uploadSparseOcr", {
+            textLen,
+            qs: qs.toFixed(2),
+            criteriaCount,
+          }),
         );
       } else {
         setMsgType("success");
         setMsg(
-          `Processed: ${extracted} new criteria rows from this upload; ${criteriaCount} total criteria in workspace (OCR quality ${qs.toFixed(2)}).`,
+          t("workspace.uploadProcessed", {
+            extracted,
+            criteriaCount,
+            qs: qs.toFixed(2),
+          }),
         );
       }
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
       setMsg(message);
-      toast.error(`Tender document upload failed: ${message}`);
+      toast.error(t("workspace.tenderUploadFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -134,14 +144,15 @@ export default function TenderWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: bname }),
       });
+      const previousName = bname;
       setBname(`Bidder ${bidders.length + 2}`);
-      toast.success(`Bidder "${bname}" registered.`);
+      toast.success(t("workspace.bidderRegistered", { name: previousName }));
       await refresh();
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
       setMsg(message);
-      toast.error(`Could not add bidder: ${message}`);
+      toast.error(t("workspace.addBidderFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -157,13 +168,13 @@ export default function TenderWorkspace() {
     try {
       await apiUpload(`/bidders/${bidderId}/documents`, fd);
       await refresh();
-      setMsg("Bidder document OCR complete.");
-      toast.success("Bidder document OCR complete.");
+      setMsg(t("workspace.bidderOcrComplete"));
+      toast.success(t("workspace.bidderOcrComplete"));
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
       setMsg(message);
-      toast.error(`Evidence upload failed: ${message}`);
+      toast.error(t("workspace.evidenceUploadFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -200,14 +211,14 @@ export default function TenderWorkspace() {
       const { criteriaCount, bidderCount } = await refresh({ silent: true });
       if (criteriaCount === 0) {
         setMsgType("warning");
-        setMsg("No criteria in this tender yet. Upload a tender document with extractable text first.");
+        setMsg(t("workspace.noCriteria"));
         setTab("docs");
         setEvalRunning(false);
         return;
       }
       if (bidderCount === 0) {
         setMsgType("warning");
-        setMsg("Register at least one bidder before running evaluation.");
+        setMsg(t("workspace.noBidders"));
         setTab("bidders");
         setEvalRunning(false);
         return;
@@ -235,19 +246,19 @@ export default function TenderWorkspace() {
         }
       }
       if (!completed) {
-        throw new Error("Evaluation timed out after 5 minutes — check server logs and AI service health.");
+        throw new Error(t("workspace.evalTimeout"));
       }
       await refresh({ silent: true });
       setTab("results");
       setMsgType("success");
       const took = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-      setMsg(`Evaluation finished in ${took}s — review graph and per-criterion verdicts.`);
-      toast.success(`Evaluation finished in ${took}s.`);
+      setMsg(t("workspace.evalFinished", { seconds: took }));
+      toast.success(t("workspace.evalFinishedToast", { seconds: took }));
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
       setMsg(message);
-      toast.error(`Evaluation failed: ${message}`);
+      toast.error(t("workspace.evalFailed", { message }));
     } finally {
       setEvalRunning(false);
       setEvalJobId(null);
@@ -257,14 +268,14 @@ export default function TenderWorkspace() {
 
   useEffect(() => {
     if (!evalRunning) return;
-    const t = window.setInterval(() => setEvalElapsed((s) => s + 1), 1000);
-    return () => window.clearInterval(t);
+    const ti = window.setInterval(() => setEvalElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(ti);
   }, [evalRunning]);
 
   useEffect(() => {
     if (!msg) return;
-    const t = window.setTimeout(() => setMsg(null), 8000);
-    return () => window.clearTimeout(t);
+    const ti = window.setTimeout(() => setMsg(null), 8000);
+    return () => window.clearTimeout(ti);
   }, [msg]);
 
   const matrix = useMemo(() => {
@@ -296,43 +307,49 @@ export default function TenderWorkspace() {
   const canBidderPrev = bidderOffset > 0;
   const canBidderNext = bidderTotal != null && bidderOffset + bidders.length < bidderTotal;
 
+  const tabLabels: Record<"docs" | "bidders" | "run" | "results", string> = {
+    docs: t("workspace.tabDocs"),
+    bidders: t("workspace.tabBidders"),
+    run: t("workspace.tabRun"),
+    results: t("workspace.tabResults"),
+  };
+
   return (
     <div className="shell">
       <AppHeader
         left={
           <>
             <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
-              ← Back
+              ← {t("common.back")}
             </Link>
-            <strong style={{ marginLeft: 12 }}>{String(tender?.title || "Tender")}</strong>
+            <strong style={{ marginLeft: 12 }}>
+              {String(tender?.title || t("workspace.fallbackTitle"))}
+            </strong>
           </>
         }
         actions={
           <Link to="/review">
-            <button className="ghost">Review queue</button>
+            <button className="ghost">{t("common.reviewQueueButton")}</button>
           </Link>
         }
       />
 
       <div className="tabs">
-        {(["docs", "bidders", "run", "results"] as const).map((t) => (
+        {(["docs", "bidders", "run", "results"] as const).map((tk) => (
           <button
-            key={t}
-            data-testid={`tab-${t}`}
-            className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}
+            key={tk}
+            data-testid={`tab-${tk}`}
+            className={tab === tk ? "active" : ""}
+            onClick={() => setTab(tk)}
           >
-            {t === "docs" && "Tender documents"}
-            {t === "bidders" && "Bidders & evidence"}
-            {t === "run" && "Run evaluation"}
-            {t === "results" && "Results & graph"}
+            {tabLabels[tk]}
           </button>
         ))}
       </div>
 
       {pageLoading && (
         <p className="muted" style={{ marginBottom: 12 }}>
-          Loading tender workspace…
+          {t("workspace.loading")}
         </p>
       )}
 
@@ -356,7 +373,7 @@ export default function TenderWorkspace() {
               {msg}
             </span>
             <button className="ghost" type="button" onClick={() => setMsg(null)}>
-              Dismiss
+              {t("common.dismiss")}
             </button>
           </div>
         </div>
@@ -364,20 +381,17 @@ export default function TenderWorkspace() {
 
       {tab === "docs" && (
         <div className="panel">
-          <h2>Upload tender PDF</h2>
-          <p className="muted">
-            Native text PDFs extract immediately; scanned PDFs should be uploaded as images for Paddle/Tesseract in
-            the AI worker. Criteria extraction runs automatically on OCR text.
-          </p>
+          <h2>{t("workspace.uploadTitle")}</h2>
+          <p className="muted">{t("workspace.uploadCopy")}</p>
           <form onSubmit={uploadTenderDoc}>
             <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg" />
             <div style={{ height: 12 }} />
             <button className="primary" disabled={busy} type="submit">
-              Upload & extract
+              {t("workspace.uploadButton")}
             </button>
           </form>
           <div style={{ height: 16 }} />
-          <h3>Extracted criteria ({criteriaList.length})</h3>
+          <h3>{t("workspace.extractedCriteria", { count: criteriaList.length })}</h3>
           {criteriaList.map((raw, i) => {
             const c = raw as Record<string, unknown>;
             const id = String(c.id || "");
@@ -412,39 +426,39 @@ export default function TenderWorkspace() {
       {tab === "bidders" && (
         <div className="grid2">
           <div className="panel">
-            <h2>Register bidder</h2>
+            <h2>{t("workspace.registerBidder")}</h2>
             <form onSubmit={addBidder}>
-              <label>Legal name</label>
+              <label>{t("workspace.legalName")}</label>
               <input value={bname} onChange={(e) => setBname(e.target.value)} required />
               <div style={{ height: 12 }} />
               <button className="primary" type="submit" disabled={busy}>
-                Add bidder
+                {t("workspace.addBidder")}
               </button>
             </form>
           </div>
           <div className="panel">
-            <h2>Evidence uploads</h2>
-            <p className="muted">Attach balance sheets, GST certificates, experience letters. Doc type drives source priority.</p>
+            <h2>{t("workspace.evidenceUploads")}</h2>
+            <p className="muted">{t("workspace.evidenceCopy")}</p>
             {bidders.map((b) => (
               <div key={b.id} style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                 <div style={{ fontWeight: 700 }}>{b.name}</div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <label style={{ flex: 1 }}>
-                    CA / financial
+                    {t("workspace.docCa")}
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "ca_certificate")}
                     />
                   </label>
                   <label style={{ flex: 1 }}>
-                    GST
+                    {t("workspace.docGst")}
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "gst_certificate")}
                     />
                   </label>
                   <label style={{ flex: 1 }}>
-                    Audited balance sheet
+                    {t("workspace.docBalance")}
                     <input
                       type="file"
                       onChange={(e) =>
@@ -455,18 +469,18 @@ export default function TenderWorkspace() {
                 </div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <label style={{ flex: 1 }}>
-                    ITR
+                    {t("workspace.docItr")}
                     <input type="file" onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "itr")} />
                   </label>
                   <label style={{ flex: 1 }}>
-                    ISO certificate
+                    {t("workspace.docIso")}
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "iso_certificate")}
                     />
                   </label>
                   <label style={{ flex: 1 }}>
-                    Work order
+                    {t("workspace.docWorkOrder")}
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "work_order")}
@@ -475,7 +489,7 @@ export default function TenderWorkspace() {
                 </div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <label style={{ flex: 1 }}>
-                    Experience letters
+                    {t("workspace.docExperience")}
                     <input
                       type="file"
                       onChange={(e) =>
@@ -484,14 +498,14 @@ export default function TenderWorkspace() {
                     />
                   </label>
                   <label style={{ flex: 1 }}>
-                    Bank statement
+                    {t("workspace.docBank")}
                     <input
                       type="file"
                       onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "bank_statement")}
                     />
                   </label>
                   <label style={{ flex: 1 }}>
-                    Technical brochure
+                    {t("workspace.docTechBrochure")}
                     <input
                       type="file"
                       onChange={(e) =>
@@ -502,7 +516,7 @@ export default function TenderWorkspace() {
                 </div>
               </div>
             ))}
-            {bidders.length === 0 && <p className="muted">Add at least one bidder.</p>}
+            {bidders.length === 0 && <p className="muted">{t("workspace.addAtLeastOne")}</p>}
 
             {showBidderPagination && (
               <div
@@ -511,7 +525,7 @@ export default function TenderWorkspace() {
                 style={{ marginTop: 16, justifyContent: "space-between" }}
               >
                 <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                  <label htmlFor="bidder-page-size" style={{ margin: 0 }}>Page size</label>
+                  <label htmlFor="bidder-page-size" style={{ margin: 0 }}>{t("common.pageSize")}</label>
                   <select
                     id="bidder-page-size"
                     data-testid="bidders-page-size"
@@ -531,7 +545,11 @@ export default function TenderWorkspace() {
                 </div>
                 <div className="row" style={{ gap: 8 }}>
                   <span className="muted" style={{ fontSize: "0.85rem" }}>
-                    {bidderOffset + 1}-{bidderOffset + bidders.length} of {bidderTotal}
+                    {t("dashboard.rangeOf", {
+                      start: bidderOffset + 1,
+                      end: bidderOffset + bidders.length,
+                      total: bidderTotal,
+                    })}
                   </span>
                   <button
                     type="button"
@@ -540,7 +558,7 @@ export default function TenderWorkspace() {
                     disabled={!canBidderPrev}
                     onClick={() => setBidderOffset(Math.max(0, bidderOffset - bidderPageSize))}
                   >
-                    Prev
+                    {t("common.prev")}
                   </button>
                   <button
                     type="button"
@@ -549,7 +567,7 @@ export default function TenderWorkspace() {
                     disabled={!canBidderNext}
                     onClick={() => setBidderOffset(bidderOffset + bidderPageSize)}
                   >
-                    Next
+                    {t("common.next")}
                   </button>
                 </div>
               </div>
@@ -560,25 +578,26 @@ export default function TenderWorkspace() {
 
       {tab === "run" && (
         <div className="panel">
-          <h2>Evaluate all bidders</h2>
-          <p className="muted">
-            Runs cross-document validation, confidence-weighted operator checks, and builds the reasoning graph.
-            NEEDS_REVIEW never silently disqualifies — it routes to the officer queue.
-          </p>
+          <h2>{t("workspace.evaluateAll")}</h2>
+          <p className="muted">{t("workspace.evaluateCopy")}</p>
           <p className="muted" style={{ marginTop: 8 }}>
-            Criteria loaded: {criteriaList.length} · Bidders: {bidders.length}
+            {t("workspace.criteriaBidders", { criteria: criteriaList.length, bidders: bidders.length })}
           </p>
           <button data-testid="run-evaluate" className="primary" disabled={busy} onClick={runEval}>
-            {evalRunning ? "Running…" : busy ? "Checking prerequisites…" : "Run decision engine"}
+            {evalRunning
+              ? t("workspace.running")
+              : busy
+                ? t("workspace.checkingPrereqs")
+                : t("workspace.runDecisionEngine")}
           </button>
           {evalRunning && (
             <p className="muted" style={{ marginTop: 8 }}>
-              Evaluation in progress… elapsed {evalElapsed}s
+              {t("workspace.elapsed", { elapsed: evalElapsed })}
             </p>
           )}
           {evalRunning && evalJobId && (
             <p className="mono muted" style={{ marginTop: 4 }}>
-              Job: {evalJobId}
+              {t("workspace.jobLabel", { job: evalJobId })}
             </p>
           )}
         </div>
@@ -587,7 +606,7 @@ export default function TenderWorkspace() {
       {tab === "results" && (
         <div className="grid2">
           <div className="panel">
-            <h2>Verdict matrix</h2>
+            <h2>{t("workspace.verdictMatrix")}</h2>
             <div className="row" style={{ marginBottom: 10 }}>
               <select
                 value={resultsVerdictFilter}
@@ -598,13 +617,13 @@ export default function TenderWorkspace() {
                 }
                 style={{ maxWidth: 220 }}
               >
-                <option value="ALL">All verdicts</option>
-                <option value="ELIGIBLE">Eligible</option>
-                <option value="NOT_ELIGIBLE">Not eligible</option>
-                <option value="NEEDS_REVIEW">Needs review</option>
+                <option value="ALL">{t("workspace.verdictAll")}</option>
+                <option value="ELIGIBLE">{t("workspace.verdictEligible")}</option>
+                <option value="NOT_ELIGIBLE">{t("workspace.verdictNotEligible")}</option>
+                <option value="NEEDS_REVIEW">{t("workspace.verdictNeedsReview")}</option>
               </select>
               <input
-                placeholder="Search criterion/reasoning"
+                placeholder={t("workspace.searchCriterion")}
                 value={resultsSearch}
                 onChange={(e) => setResultsSearch(e.target.value)}
                 style={{ minWidth: 260 }}
@@ -613,8 +632,8 @@ export default function TenderWorkspace() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Bidder</th>
-                  <th>Summary</th>
+                  <th>{t("workspace.tableBidder")}</th>
+                  <th>{t("workspace.tableSummary")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -630,14 +649,19 @@ export default function TenderWorkspace() {
                         <span style={{ fontWeight: 600 }}>{bidderLabel}</span>
                       </td>
                       <td>
-                        {eligible} eligible · {notEligible} not eligible · {review} need review · {vals.length} criteria
+                        {t("workspace.summaryLine", {
+                          eligible,
+                          notEligible,
+                          review,
+                          total: vals.length,
+                        })}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            <h3 style={{ marginTop: 16 }}>Criterion-level detail</h3>
+            <h3 style={{ marginTop: 16 }}>{t("workspace.criterionDetail")}</h3>
             {filteredDecisions.map((d, idx) => {
               const dd = d as Decision;
               const v = String(dd.verdict || "");
@@ -657,16 +681,16 @@ export default function TenderWorkspace() {
                   </div>
 
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 4 }}>Reasoning</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 4 }}>{t("workspace.reasoning")}</div>
                     <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-                      {String(dd.reasoning || dd.reason || "No reasoning provided.")}
+                      {String(dd.reasoning || dd.reason || t("workspace.noReasoning"))}
                     </p>
                   </div>
 
                   {dd.evidence_snapshot && (
                     <div style={{ background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
                       <div className="row" style={{ marginBottom: 8 }}>
-                         <span className="badge review" style={{ fontSize: '0.6rem' }}>Evidence Snapshot</span>
+                         <span className="badge review" style={{ fontSize: '0.6rem' }}>{t("workspace.evidenceSnapshot")}</span>
                          <span className="mono" style={{ fontSize: '0.7rem' }}>{dd.evidence_snapshot.document}</span>
                       </div>
                       <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
@@ -676,14 +700,16 @@ export default function TenderWorkspace() {
                   )}
 
                   <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end', opacity: 0.6 }}>
-                    <span className="mono" style={{ fontSize: '0.7rem' }}>CONFIDENCE: {Number(dd.confidence || 0).toFixed(3)}</span>
+                    <span className="mono" style={{ fontSize: '0.7rem' }}>
+                      {t("workspace.confidence", { value: Number(dd.confidence || 0).toFixed(3) })}
+                    </span>
                   </div>
                 </div>
               );
             })}
           </div>
           <div className="panel">
-            <h2>Reasoning graph</h2>
+            <h2>{t("workspace.reasoningGraph")}</h2>
             <ReasoningGraph graph={results?.graph as { nodes: []; edges: [] } | null} />
           </div>
         </div>

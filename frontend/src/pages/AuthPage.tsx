@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { login, register, token } from "../api";
 import { useToast } from "../components/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export default function AuthPage() {
-  useDocumentTitle("Sign in · TenderSense AI");
+  useDocumentTitle("auth.documentTitle");
+  const { t } = useTranslation();
   const nav = useNavigate();
   const toast = useToast();
   const [email, setEmail] = useState("");
@@ -31,7 +33,7 @@ export default function AuthPage() {
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setErr(message);
-      toast.error(`Sign in failed: ${message}`);
+      toast.error(t("auth.signInFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -47,7 +49,7 @@ export default function AuthPage() {
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setErr(message);
-      toast.error(`Registration failed: ${message}`);
+      toast.error(t("auth.registrationFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -62,15 +64,13 @@ export default function AuthPage() {
     <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 20 }}>
       <div style={{ maxWidth: 440, width: '100%' }}>
         <div className="brand" style={{ justifyContent: 'center', marginBottom: 32 }}>
-          <strong style={{ fontSize: '2rem' }}>TenderSense AI</strong>
+          <strong style={{ fontSize: '2rem' }}>{t("common.appName")}</strong>
         </div>
         <div className="panel">
-          <h1>Officer Access</h1>
-          <p className="muted">
-            Secure procurement evaluation system. Authenticate to access tender workspaces and the evaluation pipeline.
-          </p>
+          <h1>{t("auth.title")}</h1>
+          <p className="muted">{t("auth.subtitle")}</p>
           <form style={{ marginTop: 24 }} onSubmit={(e) => e.preventDefault()}>
-            <label>Department Email</label>
+            <label>{t("auth.departmentEmail")}</label>
             <input
               data-testid="auth-email"
               value={email}
@@ -78,7 +78,7 @@ export default function AuthPage() {
               autoComplete="username"
             />
             <div style={{ height: 16 }} />
-            <label>Password</label>
+            <label>{t("auth.password")}</label>
             <input
               data-testid="auth-password"
               type="password"
@@ -97,10 +97,10 @@ export default function AuthPage() {
             )}
             <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
               <button data-testid="auth-login" className="primary" style={{ flex: 1 }} disabled={busy} onClick={onLogin}>
-                Sign in
+                {t("auth.signIn")}
               </button>
               <button data-testid="auth-register" className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
-                Register
+                {t("auth.register")}
               </button>
             </div>
             {showDemoButton && (
@@ -111,7 +111,7 @@ export default function AuthPage() {
                 style={{ marginTop: 12, width: "100%", fontSize: "0.8rem" }}
                 onClick={fillDemo}
               >
-                Fill demo creds
+                {t("auth.fillDemo")}
               </button>
             )}
           </form>

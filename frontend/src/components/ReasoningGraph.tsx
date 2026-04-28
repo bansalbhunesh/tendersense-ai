@@ -1,4 +1,21 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useToast } from "./ToastProvider";
+
+type EvidenceSnippet = {
+  document?: string;
+  evidence_quote?: string;
+  extracted_value?: string;
+  source?: string;
+  text?: string;
+};
+
+type NodePayload = Record<string, unknown> & {
+  evidence?: EvidenceSnippet[] | EvidenceSnippet;
+  evidence_snapshot?: EvidenceSnippet;
+  reasoning?: string;
+  reason?: string;
+};
 
 type Node = {
   id: string;
@@ -10,6 +27,8 @@ type Node = {
   reason?: string;
   /** Optional full criterion text (raw from tender) */
   text_raw?: string;
+  /** Optional rich payload from backend with reasoning + evidence */
+  payload?: NodePayload;
 };
 
 type Edge = { from: string; to: string; label?: string };
@@ -43,18 +62,35 @@ function verdictColors(verdict: string): VerdictColor {
   };
 }
 
+function evidenceFromNode(node: Node | null): EvidenceSnippet[] {
+  if (!node) return [];
+  const p = node.payload;
+  if (!p) return [];
+  if (Array.isArray(p.evidence)) return p.evidence;
+  if (p.evidence && typeof p.evidence === "object") return [p.evidence as EvidenceSnippet];
+  if (p.evidence_snapshot) return [p.evidence_snapshot];
+  return [];
+}
+
+function truncateText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, Math.max(0, max - 1))}…`;
+}
+
 export default function ReasoningGraph({
   graph,
 }: {
   graph: { nodes: Node[]; edges: Edge[] } | null;
 }) {
+  const { t } = useTranslation();
+  const toast = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : [];
   const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
 
   if (!nodes.length) {
-    return <p className="muted">Run an evaluation to materialize the reasoning graph.</p>;
+    return <p className="muted">{t("graph.emptyState")}</p>;
   }
 
   const criteria = nodes.filter((n) => n.type === "criterion");
@@ -102,10 +138,28 @@ export default function ReasoningGraph({
   const selectedNode =
     selectedId != null ? nodes.find((n) => n.id === selectedId) || null : null;
 
+  const selectedEvidence = evidenceFromNode(selectedNode);
+
+  async function copyAsJson() {
+    if (!selectedNode) return;
+    const json = JSON.stringify(selectedNode, null, 2);
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(json);
+      } else {
+        // Fallback path — vitest jsdom may not provide clipboard.
+        throw new Error("clipboard unavailable");
+      }
+      toast.success(t("graph.copied"));
+    } catch {
+      toast.error(t("graph.copied"));
+    }
+  }
+
   return (
     <div>
       <p className="muted" style={{ marginBottom: 12 }}>
-        Directed view: criteria (left) linking to bidder verdicts (right) with confidence.
+        {t("graph.intro")}
       </p>
 
       <div
@@ -113,9 +167,9 @@ export default function ReasoningGraph({
         data-testid="reasoning-legend"
         style={{ marginBottom: 12, gap: 14, fontSize: "0.8rem" }}
       >
-        <LegendDot color="#10b981" label="PASS / ELIGIBLE" />
-        <LegendDot color="#ef4444" label="FAIL / NOT ELIGIBLE" />
-        <LegendDot color="#f59e0b" label="NEEDS REVIEW" />
+        <LegendDot color="#10b981" label={t("graph.legendPass")} />
+        <LegendDot color="#ef4444" label={t("graph.legendFail")} />
+        <LegendDot color="#f59e0b" label={t("graph.legendReview")} />
       </div>
 
       <div style={{ overflow: "auto", maxHeight: 620 }}>
@@ -148,10 +202,6 @@ export default function ReasoningGraph({
           })}
           {criteria.map((n) => {
             const p = criterionPos.get(n.id)!;
-            // Color the criterion node based on the worst verdict among its
-            // attached verdict children. This makes the graph readable at a
-            // glance: a single FAIL anywhere downstream paints the criterion
-            // red, otherwise NEEDS_REVIEW > PASS dominates.
             const downstream = (verdictsByCriterion.get(n.id) || []).map((v) =>
               String(v.label || "").toUpperCase(),
             );
@@ -169,7 +219,7 @@ export default function ReasoningGraph({
                 style={{ cursor: "pointer" }}
                 onClick={() => setSelectedId(n.id)}
               >
-                <title>{n.label}</title>
+                <title>{t("graph.criterionTooltip", { label: n.label })}</title>
                 <rect
                   x={p.x}
                   y={p.y}
@@ -180,7 +230,7 @@ export default function ReasoningGraph({
                   stroke={colors.stroke}
                 />
                 <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
-                  CRITERION
+                  {t("graph.criterionLabel")}
                 </text>
                 <text x={p.x + 10} y={p.y + 40} fill="#d1d5db" fontSize="11">
                   {summary}
@@ -192,6 +242,9 @@ export default function ReasoningGraph({
             const p = verdictPos.get(n.id)!;
             const verdict = String(n.label || "").toUpperCase();
             const colors = verdictColors(verdict);
+            const conf = typeof n.confidence === "number"
+              ? (n.confidence * 100).toFixed(0)
+              : "—";
             return (
               <g
                 key={n.id}
@@ -199,7 +252,7 @@ export default function ReasoningGraph({
                 style={{ cursor: "pointer" }}
                 onClick={() => setSelectedId(n.id)}
               >
-                <title>{`${n.label} • ${n.bidder_id ?? ""}`}</title>
+                <title>{t("graph.verdictTooltip", { verdict: n.label, percent: conf })}</title>
                 <rect
                   x={p.x}
                   y={p.y}
@@ -232,16 +285,28 @@ export default function ReasoningGraph({
         >
           <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
             <strong>
-              {selectedNode.type === "criterion" ? "Criterion" : "Verdict"} detail
+              {selectedNode.type === "criterion"
+                ? t("graph.criterionDetail")
+                : t("graph.verdictDetail")}
             </strong>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => setSelectedId(null)}
-              data-testid="reasoning-detail-close"
-            >
-              Close
-            </button>
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="ghost"
+                data-testid="reasoning-copy-json"
+                onClick={copyAsJson}
+              >
+                {t("graph.copyAsJson")}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setSelectedId(null)}
+                data-testid="reasoning-detail-close"
+              >
+                {t("common.close")}
+              </button>
+            </div>
           </div>
           <p className="muted" style={{ marginTop: 0 }}>
             {selectedNode.text_raw || selectedNode.label}
@@ -253,9 +318,55 @@ export default function ReasoningGraph({
           )}
           {typeof selectedNode.confidence === "number" && (
             <p className="mono muted" style={{ fontSize: "0.8rem" }}>
-              confidence {(selectedNode.confidence * 100).toFixed(1)}%
+              {t("graph.confidenceLabel", { percent: (selectedNode.confidence * 100).toFixed(1) })}
             </p>
           )}
+
+          <div style={{ marginTop: 10 }}>
+            <strong style={{ fontSize: "0.85rem" }}>{t("graph.evidenceHeading")}</strong>
+            {selectedEvidence.length === 0 ? (
+              <p className="muted" data-testid="reasoning-evidence-empty" style={{ marginTop: 4, fontSize: "0.85rem" }}>
+                {t("graph.noEvidence")}
+              </p>
+            ) : (
+              <div
+                data-testid="reasoning-evidence-chips"
+                className="row"
+                style={{ marginTop: 6, flexWrap: "wrap", gap: 6 }}
+              >
+                {selectedEvidence.map((ev, i) => {
+                  const text = ev.evidence_quote || ev.extracted_value || ev.text || ev.source || "";
+                  const truncated = truncateText(text, 80);
+                  const fullText = ev.document ? `${ev.document}: ${text}` : text;
+                  return (
+                    <span
+                      key={i}
+                      data-testid="reasoning-evidence-chip"
+                      title={fullText}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        background: "rgba(148,163,184,0.15)",
+                        border: "1px solid var(--border, rgba(148,163,184,0.35))",
+                        fontSize: "0.75rem",
+                        maxWidth: "100%",
+                      }}
+                    >
+                      {ev.document && (
+                        <strong style={{ fontSize: "0.7rem" }}>{ev.document}</strong>
+                      )}
+                      <span className="mono muted" style={{ fontSize: "0.7rem" }}>
+                        {truncated}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
