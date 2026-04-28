@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
 import AppHeader from "../components/AppHeader";
 import ContradictionAlert from "../components/ContradictionAlert";
+import DecisionCard from "../components/DecisionCard";
+import EvaluationPipeline from "../components/EvaluationPipeline";
 import ReasoningGraph from "../components/ReasoningGraph";
 import RiskScorePanel from "../components/RiskScorePanel";
 import { useToast } from "../components/ToastProvider";
@@ -579,7 +581,15 @@ export default function TenderWorkspace() {
       )}
 
       {tab === "run" && (
-        <div className="panel">
+        <>
+          <EvaluationPipeline
+            running={evalRunning}
+            elapsed={evalElapsed}
+            done={results !== null && !evalRunning}
+            criteriaCount={criteriaList.length}
+            bidderCount={bidders.length}
+          />
+          <div className="panel">
           <h2>{t("workspace.evaluateAll")}</h2>
           <p className="muted">{t("workspace.evaluateCopy")}</p>
           <p className="muted" style={{ marginTop: 8 }}>
@@ -603,6 +613,7 @@ export default function TenderWorkspace() {
             </p>
           )}
         </div>
+        </>
       )}
 
       {tab === "results" && (
@@ -671,51 +682,20 @@ export default function TenderWorkspace() {
               </tbody>
             </table>
             <h3 style={{ marginTop: 16 }}>{t("workspace.criterionDetail")}</h3>
-            {filteredDecisions.map((d, idx) => {
-              const dd = d as Decision;
-              const v = String(dd.verdict || "");
-              const cls = v === "ELIGIBLE" ? "ok" : v === "NOT_ELIGIBLE" ? "bad" : "review";
-              const cid = String(dd.criterion_id || "");
-              const critTitle = criterionLabelById.get(cid) || cid;
-              return (
-                <div key={idx} className="panel" style={{ marginTop: 12 }}>
-                  <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: "75%" }}>
-                      <span style={{ fontWeight: 600 }}>{critTitle}</span>
-                      <span className="mono muted" style={{ fontSize: "0.75rem" }}>
-                        id {cid.slice(0, 8)}…
-                      </span>
-                    </div>
-                    <span className={`badge ${cls}`}>{v.replace(/_/g, " ")}</span>
-                  </div>
-
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 4 }}>{t("workspace.reasoning")}</div>
-                    <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-                      {String(dd.reasoning || dd.reason || t("workspace.noReasoning"))}
-                    </p>
-                  </div>
-
-                  {dd.evidence_snapshot && (
-                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-                      <div className="row" style={{ marginBottom: 8 }}>
-                         <span className="badge review" style={{ fontSize: '0.6rem' }}>{t("workspace.evidenceSnapshot")}</span>
-                         <span className="mono" style={{ fontSize: '0.7rem' }}>{dd.evidence_snapshot.document}</span>
-                      </div>
-                      <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                        "{dd.evidence_snapshot.evidence_quote || dd.evidence_snapshot.extracted_value}"
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end', opacity: 0.6 }}>
-                    <span className="mono" style={{ fontSize: '0.7rem' }}>
-                      {t("workspace.confidence", { value: Number(dd.confidence || 0).toFixed(3) })}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+              {filteredDecisions.map((d, idx) => {
+                const dd = d as Decision;
+                const cid = String(dd.criterion_id || "");
+                const critTitle = criterionLabelById.get(cid) || cid;
+                return (
+                  <DecisionCard
+                    key={idx}
+                    decision={dd}
+                    criterionLabel={critTitle}
+                  />
+                );
+              })}
+            </div>
           </div>
           <div className="panel">
             <h2>{t("workspace.reasoningGraph")}</h2>

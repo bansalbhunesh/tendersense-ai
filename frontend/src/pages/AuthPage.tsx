@@ -62,10 +62,60 @@ export default function AuthPage() {
 
   return (
     <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 20 }}>
-      <div style={{ maxWidth: 440, width: '100%' }}>
-        <div className="brand" style={{ justifyContent: 'center', marginBottom: 32 }}>
-          <strong style={{ fontSize: '2rem' }}>{t("common.appName")}</strong>
+      <div style={{ maxWidth: 480, width: '100%' }}>
+        {/* Hero statement */}
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 14px',
+              borderRadius: 20,
+              background: 'rgba(245,158,11,0.1)',
+              border: '1px solid rgba(245,158,11,0.3)',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              color: '#f59e0b',
+              letterSpacing: '0.06em',
+              marginBottom: 16,
+            }}
+          >
+            🇮🇳 AI for Bharat · Explainable Public Procurement
+          </div>
+          <h1
+            style={{
+              margin: '0 0 12px',
+              fontSize: '2.2rem',
+              fontWeight: 900,
+              letterSpacing: '-0.03em',
+              background: 'linear-gradient(135deg, #fff 30%, #9ca3af)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              lineHeight: 1.15,
+            }}
+          >
+            {t("common.appName")}
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--muted)',
+              fontSize: '0.9rem',
+              lineHeight: 1.6,
+              maxWidth: 380,
+              marginInline: 'auto',
+            }}
+          >
+            Thousands of MSMEs lose tenders they deserve — because the
+            evaluation process is manual, inconsistent, and impossible to audit.
+            <br />
+            <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+              TenderSense AI makes every verdict explainable.
+            </span>
+          </p>
         </div>
+
         <div className="panel">
           <h1>{t("auth.title")}</h1>
           <p className="muted">{t("auth.subtitle")}</p>

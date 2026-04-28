@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import AppHeader from "../components/AppHeader";
+import AuditTimeline from "../components/AuditTimeline";
 import { useToast } from "../components/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
@@ -360,25 +361,30 @@ export default function ReviewPage() {
       <div style={{ height: 16 }} />
 
       <div className="panel">
-        <h2>{t("review.auditLog")}</h2>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t("review.auditWhen")}</th>
-              <th>{t("review.auditAction")}</th>
-              <th>{t("review.auditChecksum")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {audit.map((e) => (
-              <tr key={String(e.id)}>
-                <td className="mono">{new Date(String(e.created_at)).toLocaleString()}</td>
-                <td>{String(e.action)}</td>
-                <td className="mono">{String(e.checksum || "").slice(0, 24)}…</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>{t("review.auditLog")}</h2>
+            <p className="muted" style={{ margin: "3px 0 0", fontSize: "0.82rem" }}>
+              Append-only hash-chained log · every override is cryptographically sealed
+            </p>
+          </div>
+          {audit.length > 0 && (
+            <span
+              style={{
+                padding: "4px 12px",
+                borderRadius: 6,
+                background: "rgba(16,185,129,0.08)",
+                border: "1px solid rgba(16,185,129,0.2)",
+                fontSize: "0.75rem",
+                color: "#10b981",
+                fontWeight: 700,
+              }}
+            >
+              {audit.length} entries
+            </span>
+          )}
+        </div>
+        <AuditTimeline entries={audit} />
       </div>
     </div>
   );
