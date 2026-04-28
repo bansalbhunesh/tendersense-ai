@@ -3,10 +3,11 @@
 > Explainable, auditable AI for **government tender evaluation** — built for Indian procurement realities (CRPF reference deployment).
 
 [![CI](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-118%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-149%20passing-brightgreen)
 ![go](https://img.shields.io/badge/backend-Go%201.22-00ADD8)
 ![python](https://img.shields.io/badge/ai--service-FastAPI%20%7C%20Python%203.12-3776AB)
 ![web](https://img.shields.io/badge/frontend-Vite%20%7C%20React%2018%20%7C%20TS%20strict-646CFF)
+![bharat](https://img.shields.io/badge/Bharat--first-EN%20%2B%20%E0%A4%B9%E0%A4%BF%E0%A4%82%20%E2%80%A2%20Bhashini%20%E2%80%A2%20Sovereign%20mode-FF9933)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
 ```
@@ -35,13 +36,17 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 
 | Capability | What's in the box |
 |---|---|
-| **Tender ingest** | Native PDF parsing → Tesseract/PaddleOCR fallback, per-page quality score |
+| **Tender ingest** | Native PDF parsing → Tesseract/PaddleOCR fallback, per-page quality score, **Hindi OCR via Tesseract `eng+hin` + PaddleOCR Devanagari head** |
 | **Criteria extraction** | LLM-with-schema (Anthropic Claude) when configured; deterministic regex extractor covers ~16 categories: turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting |
+| **Indic language pipeline** | Devanagari ratio language detector → pluggable translator (Bhashini ULCA / passthrough) → existing extractor. Each criterion carries `source_text_lang` and `source_clause_translated` so the audit trail keeps the original Hindi clause |
 | **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 PASS/FAIL without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
-| **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail), two-pane review queue with criterion-level overrides, audit log, in-app toasts |
+| **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
+| **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail, evidence chips, "Copy as JSON"), two-pane review queue with criterion-level overrides, audit log, in-app toasts, **EN ↔ हिं i18next toggle** persisted per officer |
 | **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
 | **Auth** | JWT + bcrypt, rate-limited login/eval, structured error envelope |
-| **Demo pack** | 3 deterministic golden PDFs in `demo/pdfs/` + repeatable 2-minute pitch script |
+| **Demo pack** | **4** deterministic golden PDFs in `demo/pdfs/` (incl. Devanagari `04_TENDER_BHARAT_HINDI.pdf`), throughput benchmark (`benchmark.py`), reusable eval-payload fixture, 2-minute pitch script |
+
+> **Bharat-first?** See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md) for the full sovereignty / Indic / MeitY-alignment story.
 
 ---
 
@@ -117,8 +122,8 @@ Open `http://localhost:5173`, register an officer account, upload one of the PDF
 | Suite | Command | Count |
 |---|---|---|
 | Backend unit + handler | `cd backend && go test ./...` | **44 pass** |
-| AI service | `cd ai-service && pytest -q` | **45 pass / 1 skip** (Tesseract-only path) |
-| Frontend unit | `cd frontend && npm test` | **29 pass** |
+| AI service (incl. translation, language detect, Hindi extraction) | `cd ai-service && pytest -q` | **67 pass / 1 skip** (Tesseract-only path) |
+| Frontend unit (incl. i18n + reasoning graph) | `cd frontend && npm test` | **38 pass** |
 | Playwright e2e (register → tender → eval) | `cd frontend && npm run test:e2e` | 1 smoke |
 
 Every PR runs all four jobs in `.github/workflows/ci.yml`.
@@ -155,6 +160,10 @@ Every PR runs all four jobs in `.github/workflows/ci.yml`.
 | `DATA_DIR` | Backend, AI | `data/uploads` | Shared upload root (path-traversal-locked in AI service) |
 | `ANTHROPIC_API_KEY` | AI | _empty_ | Optional. Without it, deterministic engine runs |
 | `ANTHROPIC_MODEL` | AI | `claude-sonnet-4-20250514` | Override the cross-check model |
+| `LLM_BACKEND` | AI | `anthropic` | `anthropic` / `disabled` / `bhashini` — sovereign-mode switch |
+| `TRANSLATION_BACKEND` | AI | `disabled` | `disabled` (passthrough) / `bhashini` (ULCA pipeline) |
+| `BHASHINI_USER_ID`, `BHASHINI_API_KEY`, `BHASHINI_PIPELINE_ID`, `BHASHINI_INFERENCE_URL` | AI | _empty_ | Required when `TRANSLATION_BACKEND=bhashini` |
+| `OCR_LANGS` | AI | `eng` | Tesseract language stack. Set to `eng+hin` to enable Hindi OCR + a Devanagari PaddleOCR pass |
 | `REDIS_URL` | AI | _empty_ | Optional cache; silent no-op when unset |
 | `EVALUATE_CACHE_TTL_SECONDS` | AI | `900` | Eval result cache TTL |
 | `GIT_SHA` | Both | _empty_ | Surfaced via `/version` endpoints |
@@ -239,16 +248,22 @@ cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && py
 
 ## Roadmap (honest list)
 
-**Production-readiness gaps that ship-blocked us for a hackathon submission but matter for actual deployment:**
+**What's already shipped in this repo (was on the roadmap in the previous draft):**
 
-- 🇮🇳 **Indic-language tenders.** Today the extractor is English-only. Hindi + regional language support via Bhashini / IndicTrans2 / IndicBERT is the next high-impact unlock.
-- 🧠 **Domain-tuned model.** Replace generic Claude cross-check with a model fine-tuned on a curated Indian tender corpus.
-- 📈 **Throughput.** Single-process eval works for demo scale; production needs a worker queue (NATS/Kafka) and horizontal eval workers.
-- 🔐 **RBAC.** Today a logged-in officer sees everything. Add tender-scoped roles (creator / reviewer / auditor).
-- 📦 **Object storage.** Uploads are on shared volume; S3/MinIO with presigned URLs for production.
-- 📊 **Metrics + tracing.** Logs only today. Prometheus + OpenTelemetry traces + dashboards.
-- 📱 **Mobile-friendly UI.** Officers in the field need it.
-- 🧾 **PII redaction.** Bidder docs contain PAN/Aadhaar — needs deterministic redaction before logging.
+- 🇮🇳 **Indic tender ingest** — Devanagari OCR (`eng+hin`), Bhashini-pluggable translator, EN/हिं officer UI. See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md).
+- 🛡️ **Sovereign mode** — `LLM_BACKEND=disabled` runs the deterministic engine with zero foreign-cloud calls.
+- 📊 **Throughput harness** — `demo/benchmark.py` measures p50/p95/p99 against `/v1/evaluate`.
+
+**Production-readiness gaps that still matter for an actual government deployment:**
+
+- 🧠 **Domain-tuned reasoning** — replace the generic Claude cross-check with an IndicTrans2/AI4Bharat model fine-tuned on a real Indian tender corpus.
+- 🚀 **Horizontal scale-out** — move eval execution to a Kafka/NATS worker pool; in-process today.
+- 🔐 **Granular RBAC** — tender-scoped roles (creator / reviewer / auditor); all officers see everything today.
+- 📦 **Object storage** — S3/MinIO with presigned URLs; uploads currently sit on a shared volume.
+- 📊 **Metrics + tracing** — Prometheus + OpenTelemetry; logs only today.
+- 📱 **Mobile-friendly UI** — field officers need it; current layout assumes desktop.
+- 🧾 **PII redaction** — deterministic PAN / Aadhaar / GSTIN redaction before logging.
+- 🔌 **GeM / CPPP connector** — direct tender ingest from gem.gov.in once empanelment is in place.
 
 ---
 
