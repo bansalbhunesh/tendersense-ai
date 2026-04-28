@@ -12,7 +12,7 @@
 
 ```
 Tender PDF ─► OCR + Native parse ─► Structured criteria  ─┐
-                                                          ├─► Decision engine ─► PASS / FAIL / NEEDS_REVIEW
+                                                          ├─► Decision engine ─► ELIGIBLE / NOT_ELIGIBLE / NEEDS_REVIEW
 Bidder docs ─► OCR + Evidence extract ─► Normalized facts ┘                            │  (with confidence + reasoning)
                                                                                        ▼
                                                                  Officer review queue • Audit log • Reasoning graph
@@ -27,7 +27,7 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 **TenderSense AI is built around three commitments:**
 
 1. **Never silently reject.** When evidence is missing or contradictory, the system surfaces `NEEDS_REVIEW` to a human officer instead of disqualifying a bidder.
-2. **Every verdict is traceable.** Each PASS/FAIL is tied to the specific clause, evidence snippet, and confidence score that produced it.
+2. **Every verdict is traceable.** Each `ELIGIBLE`/`NOT_ELIGIBLE` is tied to the specific clause, evidence snippet, and confidence score that produced it.
 3. **The audit trail is immutable.** Officer overrides, criteria edits, and decisions are appended to a hash-chained audit log.
 
 ---
@@ -39,7 +39,7 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 | **Tender ingest** | Native PDF parsing → Tesseract/PaddleOCR fallback, per-page quality score, **Hindi OCR via Tesseract `eng+hin` + PaddleOCR Devanagari head** |
 | **Criteria extraction** | LLM-with-schema (Anthropic Claude) when configured; deterministic regex extractor covers ~16 categories: turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting |
 | **Indic language pipeline** | Devanagari ratio language detector → pluggable translator (Bhashini ULCA / passthrough) → existing extractor. Each criterion carries `source_text_lang` and `source_clause_translated` so the audit trail keeps the original Hindi clause |
-| **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 PASS/FAIL without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
+| **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 `ELIGIBLE`/`NOT_ELIGIBLE` without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
 | **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
 | **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail, evidence chips, "Copy as JSON"), two-pane review queue with criterion-level overrides, audit log, in-app toasts, **EN ↔ हिं i18next toggle** persisted per officer |
 | **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
@@ -64,7 +64,30 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 Open `http://localhost:5173`, register an officer account, upload one of the PDFs in `demo/pdfs/`, register two bidders, run the evaluation, and watch the reasoning graph light up.
 
-> Without `ANTHROPIC_API_KEY`, the deterministic engine still produces real `PASS`/`FAIL` verdicts on the demo PDFs — no degraded "all NEEDS_REVIEW" experience.
+> Without `ANTHROPIC_API_KEY`, the deterministic engine still produces real `ELIGIBLE`/`NOT_ELIGIBLE` verdicts on the demo PDFs — no degraded "all NEEDS_REVIEW" experience.
+
+### Common workflows via Make
+
+```bash
+make help            # list every target with one-line descriptions
+make install         # install per-service deps (Python venv, npm, go modules)
+make test            # run all four test suites (backend, ai-service, frontend, e2e)
+make bench           # spin up ai-service in sovereign mode and run the throughput benchmark
+make demo            # regenerate + verify the four deterministic demo PDFs
+make smoke-bharat    # curl-based end-to-end smoke for /v1/detect-language, /translate, /evaluate
+```
+
+### Measured throughput (sovereign mode)
+
+`make bench` against the deterministic engine on Apple Silicon (single uvicorn worker):
+
+| Workload | Throughput | p50 | p95 |
+|---|---|---|---|
+| 50 req @ 10 concurrent | **1,138 req/s** | 7.5 ms | 20 ms |
+| 200 req @ 25 concurrent | **1,171 req/s** | 13 ms | 57 ms |
+| 500 req @ 50 concurrent | **1,986 req/s** | 22 ms | 33 ms |
+
+This measures the rule-engine + JSON serialisation hot path. End-to-end tender ingestion adds OCR (~hundreds of ms per page) on top.
 
 ---
 
@@ -211,7 +234,7 @@ npm run dev    # Vite proxies /api → http://127.0.0.1:8080
 The 2-minute live pitch is scripted in [`demo/DEMO_SCRIPT.md`](demo/DEMO_SCRIPT.md). Key beats:
 
 1. **Upload `01_TENDER_CRPF_DEMO.pdf`** → criteria populate (turnover ≥ ₹5 Cr, similar projects ≥ 3, GST mandatory, ISO optional, …).
-2. **Bidder A** uploads `02_BIDDER_ACME_ELIGIBLE.pdf` → all green PASS.
+2. **Bidder A** uploads `02_BIDDER_ACME_ELIGIBLE.pdf` → all green `ELIGIBLE`.
 3. **Bidder B** uploads `03_BIDDER_BETA_CONFLICT.pdf` → **NEEDS_REVIEW** with `CONFLICT_DETECTED` (turnover appears as both ₹5.23 Cr and ₹3.10 Cr in the same pack).
 4. Open the **reasoning graph** → click any node to see the evidence snippet + confidence.
 5. Open the **review queue** → officer overrides Bidder B's verdict; the **audit log** gets a new immutable row with the previous and new state.
@@ -227,8 +250,8 @@ cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && py
 
 | State | When | Confidence |
 |---|---|---|
-| **`PASS`** | Numeric threshold met or required document present | ≥ 0.7 |
-| **`FAIL`** | Numeric threshold violated or required document absent | ≥ 0.7 |
+| **`ELIGIBLE`** | Numeric threshold met or required document present | ≥ 0.7 |
+| **`NOT_ELIGIBLE`** | Numeric threshold violated or required document absent | ≥ 0.7 |
 | **`NEEDS_REVIEW`** | Evidence absent / contradictory / OCR confidence too low | < 0.6 or conflict flag |
 
 **Confidence < 0.6 always routes to a human.** That's the contract.
