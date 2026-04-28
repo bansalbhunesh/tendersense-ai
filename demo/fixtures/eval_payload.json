@@ -1,0 +1,79 @@
+{
+  "tender_id": "demo-bharat-001",
+  "criteria": [
+    {
+      "id": "c_turnover",
+      "field": "annual_turnover",
+      "text_raw": "Minimum annual turnover of Rs. 5 Crore in any of the last 3 financial years.",
+      "operator": ">=",
+      "value": 50000000,
+      "unit": "INR",
+      "mandatory": true,
+      "source_priority": ["ca_certificate", "audited_statement", "itr", "supporting"],
+      "semantic_ambiguity_score": 0.05
+    },
+    {
+      "id": "c_similar_projects",
+      "field": "similar_projects_count",
+      "text_raw": "At least 3 similar projects successfully completed in the last 5 years.",
+      "operator": ">=",
+      "value": 3,
+      "unit": "count",
+      "mandatory": true,
+      "source_priority": ["work_completion_certificate", "supporting"],
+      "semantic_ambiguity_score": 0.10
+    },
+    {
+      "id": "c_gst",
+      "field": "gst_registration",
+      "text_raw": "Valid GST registration is mandatory for participation.",
+      "operator": "==",
+      "value": 1,
+      "unit": "bool",
+      "mandatory": true,
+      "source_priority": ["gst_certificate", "supporting"],
+      "semantic_ambiguity_score": 0.0
+    },
+    {
+      "id": "c_iso",
+      "field": "iso_9001",
+      "text_raw": "ISO 9001 certification is desirable for technical scoring.",
+      "operator": "==",
+      "value": 1,
+      "unit": "bool",
+      "mandatory": false,
+      "source_priority": ["iso_certificate", "supporting"],
+      "semantic_ambiguity_score": 0.0
+    }
+  ],
+  "bidders": [
+    {
+      "bidder_id": "b_acme",
+      "documents": [
+        {
+          "id": "d_acme_pack",
+          "filename": "02_BIDDER_ACME_ELIGIBLE.pdf",
+          "doc_type": "ca_certificate",
+          "ocr": {
+            "quality_score": 0.95,
+            "text": "ACME Infrastructure Pvt Ltd. Total Turnover (audited FY 2023-24): Rs. 5.23 Crore. GSTIN: 27AAAAA1234A1Z5 active under Central Goods and Services Tax. ISO 9001 certification held for civil construction. We have completed 4 similar projects in road and building works in the last 5 years."
+          }
+        }
+      ]
+    },
+    {
+      "bidder_id": "b_beta",
+      "documents": [
+        {
+          "id": "d_beta_pack",
+          "filename": "03_BIDDER_BETA_CONFLICT.pdf",
+          "doc_type": "ca_certificate",
+          "ocr": {
+            "quality_score": 0.92,
+            "text": "Beta Constructors LLP. CA certificate: total turnover Rs. 5.23 Crore for FY 2023-24. ITR excerpt: total turnover from business INR 3,10,00,000 (Rupees Three Crore Ten Lakh only). GSTIN 06BBBBB5678B2Z3 is active. GST registration is submitted for eligibility."
+          }
+        }
+      ]
+    }
+  ]
+}

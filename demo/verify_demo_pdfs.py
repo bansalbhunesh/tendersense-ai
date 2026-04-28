@@ -44,6 +44,22 @@ def main() -> None:
     assert "5.23" in t3 and "3,10,00,000" in t3
     print("03 bidder B: OK (conflicting turnover figures in one pack)")
 
+    # 04 Hindi tender — verify Devanagari clauses round-tripped through pdfplumber.
+    # We assert on stems rather than full sentences so minor shaping differences
+    # (e.g. matras rendered as separate clusters) don't break the check.
+    t4 = text_of("04_TENDER_BHARAT_HINDI.pdf")
+    expected_hindi = [
+        "टर्नओवर",     # turnover
+        "जीएसटी",       # GST
+        "करोड़",        # crore
+        "परियोजना",     # project (covers परियोजनाएँ etc.)
+        "आईएसओ",        # ISO
+        "पात्रता",      # eligibility
+    ]
+    missing = [w for w in expected_hindi if w not in t4]
+    assert not missing, f"04 hindi tender: missing keywords {missing!r}\nGot text:\n{t4[:600]}"
+    print("04 tender (Hindi): OK (Devanagari criteria phrases present)")
+
     print("\nAll demo PDF checks passed.")
 
 
