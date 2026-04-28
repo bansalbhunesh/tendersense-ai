@@ -15,10 +15,11 @@ export function clearToken(): void {
 type StructuredError = { code?: string; message?: string; request_id?: string };
 
 async function readErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
   const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) {
+  if (text && ct.includes("application/json")) {
     try {
-      const j = (await res.json()) as {
+      const j = JSON.parse(text) as {
         error?: string | StructuredError;
         message?: string;
       };
@@ -33,8 +34,7 @@ async function readErrorMessage(res: Response): Promise<string> {
       /* fall through */
     }
   }
-  const t = await res.text();
-  return t || res.statusText;
+  return text ? `[HTTP ${res.status}] ${text}` : `HTTP ${res.status} ${res.statusText}`;
 }
 
 function handleUnauthorized() {
