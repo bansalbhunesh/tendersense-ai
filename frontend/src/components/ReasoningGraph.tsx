@@ -39,11 +39,11 @@ function verdictColors(verdict: string): VerdictColor {
   const v = verdict.toUpperCase();
   if (v === "PASS" || v === "ELIGIBLE") {
     return {
-      stroke: "rgba(4, 120, 87, 0.45)",
-      fill: "rgba(4, 120, 87, 0.1)",
-      text: "#0f766e",
-      dot: "#059669",
-      titleFill: "#065f46",
+      stroke: "rgba(8, 145, 178, 0.45)",
+      fill: "rgba(8, 145, 178, 0.1)",
+      text: "#0e7490",
+      dot: "#0891b2",
+      titleFill: "#155e75",
     };
   }
   if (v === "FAIL" || v === "NOT_ELIGIBLE") {
@@ -169,7 +169,7 @@ export default function ReasoningGraph({
         data-testid="reasoning-legend"
         style={{ marginBottom: 12, gap: 14, fontSize: "0.8rem" }}
       >
-        <LegendDot color="#10b981" label={t("graph.legendPass")} />
+        <LegendDot color="#0891b2" label={t("graph.legendPass")} />
         <LegendDot color="#ef4444" label={t("graph.legendFail")} />
         <LegendDot color="#f59e0b" label={t("graph.legendReview")} />
       </div>

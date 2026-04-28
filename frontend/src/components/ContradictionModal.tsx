@@ -49,7 +49,7 @@ function AnimatedBar({ targetPct }: { targetPct: number }) {
     return () => clearTimeout(t);
   }, [targetPct]);
 
-  const color = pct > 70 ? "#10b981" : pct > 55 ? "#f59e0b" : "#ef4444";
+  const color = pct > 70 ? "#0891b2" : pct > 55 ? "#f59e0b" : "#ef4444";
 
   return (
     <div>

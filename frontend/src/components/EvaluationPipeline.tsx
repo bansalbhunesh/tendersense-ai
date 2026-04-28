@@ -53,10 +53,10 @@ function StageNode({
 }) {
   const colors: Record<Status, { dot: string; text: string; border: string; bg: string }> = {
     done: {
-      dot: "#10b981",
-      text: "#065f46",
-      border: "rgba(16,185,129,0.4)",
-      bg: "rgba(16,185,129,0.08)",
+      dot: "#0891b2",
+      text: "#155e75",
+      border: "rgba(8, 145, 178, 0.42)",
+      bg: "rgba(8, 145, 178, 0.09)",
     },
     active: {
       dot: "#f59e0b",
@@ -231,11 +231,11 @@ export default function EvaluationPipeline({
             style={{
               padding: "5px 14px",
               borderRadius: 8,
-              background: "rgba(16,185,129,0.1)",
-              border: "1px solid rgba(16,185,129,0.3)",
+              background: "rgba(8, 145, 178, 0.1)",
+              border: "1px solid rgba(8, 145, 178, 0.32)",
               fontSize: "0.78rem",
               fontWeight: 700,
-              color: "#10b981",
+              color: "#0891b2",
             }}
           >
             ✓ COMPLETE

@@ -93,13 +93,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   borderRadius: 10,
                   background:
                     t.kind === "success"
-                      ? "rgba(16,185,129,0.15)"
+                      ? "rgba(8, 145, 178, 0.16)"
                       : t.kind === "error"
                         ? "rgba(239,68,68,0.15)"
                         : "rgba(59,130,246,0.15)",
                   border:
                     t.kind === "success"
-                      ? "1px solid rgba(16,185,129,0.45)"
+                      ? "1px solid rgba(8, 145, 178, 0.42)"
                       : t.kind === "error"
                         ? "1px solid rgba(239,68,68,0.45)"
                         : "1px solid rgba(59,130,246,0.45)",

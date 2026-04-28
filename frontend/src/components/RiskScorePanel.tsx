@@ -79,7 +79,7 @@ export default function RiskScorePanel({ decisions }: { decisions: Decision[] })
   const overallRisk =
     conflictsFound > 0 ? "HIGH" : needsReview / total > 0.3 ? "MEDIUM" : "LOW";
   const riskColor =
-    overallRisk === "HIGH" ? "#ef4444" : overallRisk === "MEDIUM" ? "#f59e0b" : "#10b981";
+    overallRisk === "HIGH" ? "#ef4444" : overallRisk === "MEDIUM" ? "#f59e0b" : "#0891b2";
 
   return (
     <div
@@ -137,7 +137,7 @@ export default function RiskScorePanel({ decisions }: { decisions: Decision[] })
       >
         <RingGauge
           pct={trustScore}
-          color="#10b981"
+          color="#0891b2"
           label="Trust Score"
           sublabel="Verdict + evidence confidence"
         />
@@ -169,10 +169,10 @@ export default function RiskScorePanel({ decisions }: { decisions: Decision[] })
             gap: 6,
             padding: "4px 12px",
             borderRadius: 6,
-            background: "rgba(16,185,129,0.1)",
-            border: "1px solid rgba(16,185,129,0.2)",
+            background: "rgba(8, 145, 178, 0.1)",
+            border: "1px solid rgba(8, 145, 178, 0.22)",
             fontSize: "0.8rem",
-            color: "#10b981",
+            color: "#0e7490",
             fontWeight: 700,
           }}
         >

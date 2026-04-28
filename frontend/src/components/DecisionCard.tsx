@@ -124,10 +124,10 @@ function EligibleCard({
   return (
     <div
       style={{
-        borderLeft: "3px solid #10b981",
+        borderLeft: "3px solid var(--ok)",
         borderRadius: "0 10px 10px 0",
         padding: "14px 16px",
-        background: "rgba(16,185,129,0.04)",
+        background: "rgba(8, 145, 178, 0.05)",
         marginBottom: 2,
       }}
     >
@@ -165,20 +165,20 @@ function EligibleCard({
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Requirement
             </div>
-            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#065f46" }}>{reqLine}</div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-secondary)" }}>{reqLine}</div>
           </div>
           <div
             style={{
               padding: "10px 12px",
               borderRadius: 8,
-              background: "rgba(16,185,129,0.06)",
-              border: "1px solid rgba(16,185,129,0.25)",
+              background: "rgba(8, 145, 178, 0.07)",
+              border: "1px solid rgba(8, 145, 178, 0.28)",
             }}
           >
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Found
             </div>
-            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#047857" }}>{foundLine}</div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--ok-fg)" }}>{foundLine}</div>
             <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 2 }}>{sourceDoc}</div>
           </div>
         </div>
@@ -188,7 +188,7 @@ function EligibleCard({
         <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           AI Confidence
         </div>
-        <ConfBar value={confidence} color="#10b981" />
+        <ConfBar value={confidence} color="var(--ok)" />
       </div>
 
       <div
@@ -199,10 +199,10 @@ function EligibleCard({
           gap: 6,
           padding: "4px 10px",
           borderRadius: 6,
-          background: "rgba(16,185,129,0.08)",
-          border: "1px solid rgba(16,185,129,0.2)",
+          background: "rgba(8, 145, 178, 0.09)",
+          border: "1px solid rgba(8, 145, 178, 0.22)",
           fontSize: "0.7rem",
-          color: "#047857",
+          color: "var(--ok-fg)",
         }}
       >
         Auto-approved · no human review required

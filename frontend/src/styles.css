@@ -1,53 +1,56 @@
-/* TenderSense — Sarvam-inspired sovereign-AI product UI
-   Light, confident typography; emerald primary; airy layouts. */
+/* TenderSense — warm paper UI for Indian procurement teams:
+   indigo trust + terracotta warmth; cyan (not emerald) for “clear / eligible”. */
 
 :root {
-  /* Canvas */
-  --bg: #f3f6f4;
-  --bg-subtle: #e8eee9;
-  --surface: #ffffff;
-  --surface-2: #f8faf8;
-  --border: rgba(2, 44, 34, 0.09);
-  --border-strong: rgba(2, 44, 34, 0.14);
-  --ring: rgba(4, 120, 87, 0.35);
+  /* Canvas — warm paper */
+  --bg: #faf7f2;
+  --bg-subtle: #f0ebe3;
+  --surface: #fffefb;
+  --surface-2: #f7f3ec;
+  --border: rgba(28, 25, 23, 0.09);
+  --border-strong: rgba(28, 25, 23, 0.14);
+  --ring: rgba(79, 70, 229, 0.38);
 
   /* Type */
-  --text: #0c1f18;
-  --text-secondary: #3d524a;
-  --muted: #5c7067;
-  --font-display: "Sora", system-ui, sans-serif;
-  --font-ui: "Work Sans", system-ui, sans-serif;
+  --text: #1c1917;
+  --text-secondary: #44403c;
+  --muted: #57534e;
+  --font-display: "Outfit", system-ui, sans-serif;
+  --font-ui: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Brand — sovereign green (Sarvam-adjacent) + warm secondary */
-  --accent: #047857;
-  --accent-hover: #065f46;
-  --accent-muted: #0d9488;
-  --accent-soft: rgba(4, 120, 87, 0.12);
-  --accent-soft-strong: rgba(4, 120, 87, 0.18);
-  --accent-ink: #022c22;
-  --accent-warm: #c2410c;
-  --accent-warm-soft: rgba(194, 65, 12, 0.12);
+  /* Brand — deep indigo + terracotta highlight */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-muted: #6366f1;
+  --accent-soft: rgba(79, 70, 229, 0.12);
+  --accent-soft-strong: rgba(79, 70, 229, 0.2);
+  --accent-ink: #312e81;
+  --accent-warm: #c05621;
+  --accent-warm-soft: rgba(192, 86, 33, 0.14);
 
-  /* Semantic */
-  --ok: #047857;
-  --ok-fg: #065f46;
-  --ok-soft: rgba(4, 120, 87, 0.1);
+  /* Semantic — success uses cyan-teal (reads “clear” without heavy green) */
+  --ok: #0891b2;
+  --ok-fg: #0e7490;
+  --ok-soft: rgba(8, 145, 178, 0.11);
   --warn: #c2410c;
   --warn-fg: #9a3412;
   --bad: #b91c1c;
   --bad-fg: #991b1b;
   --bad-soft: rgba(185, 28, 28, 0.08);
-  --review: #1d4ed8;
-  --review-fg: #1e40af;
-  --review-soft: rgba(29, 78, 216, 0.08);
+  --review: #2563eb;
+  --review-fg: #1d4ed8;
+  --review-soft: rgba(37, 99, 235, 0.09);
 
   /* Surfaces for inset / progress */
-  --inset: rgba(12, 31, 24, 0.055);
-  --inset-border: rgba(12, 31, 24, 0.1);
-  --progress-track: rgba(12, 31, 24, 0.1);
-  --panel-shadow: 0 1px 2px rgba(2, 44, 34, 0.04), 0 12px 40px -16px rgba(2, 44, 34, 0.12);
-  --hero-shadow: 0 24px 80px -24px rgba(2, 44, 34, 0.35);
+  --inset: rgba(28, 25, 23, 0.055);
+  --inset-border: rgba(28, 25, 23, 0.1);
+  --progress-track: rgba(28, 25, 23, 0.1);
+  --panel-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 12px 40px -16px rgba(49, 46, 129, 0.1);
+  --hero-shadow: 0 24px 80px -24px rgba(30, 27, 75, 0.45);
+
+  /* Inline-style helpers */
+  --ok-rgb: 8, 145, 178;
 
   /* Legacy aliases (older components) */
   --saffron: var(--accent-warm);
@@ -75,8 +78,9 @@ body {
   min-height: 100vh;
   background: var(--bg);
   background-image:
-    radial-gradient(ellipse 120% 80% at 0% -20%, rgba(4, 120, 87, 0.07), transparent 50%),
-    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(194, 65, 12, 0.05), transparent 45%);
+    radial-gradient(ellipse 120% 80% at 0% -20%, rgba(79, 70, 229, 0.06), transparent 52%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(192, 86, 33, 0.06), transparent 46%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(8, 145, 178, 0.04), transparent 50%);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 15px;
@@ -106,8 +110,8 @@ body {
 .auth-hero {
   position: relative;
   padding: clamp(32px, 6vw, 72px) clamp(28px, 5vw, 64px);
-  background: var(--accent-ink);
-  color: #ecfdf5;
+  background: #1e1b4b;
+  color: #e0e7ff;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -118,9 +122,9 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 20% 20%, rgba(16, 185, 129, 0.25), transparent 45%),
-    radial-gradient(circle at 90% 10%, rgba(194, 65, 12, 0.18), transparent 35%),
-    radial-gradient(circle at 60% 100%, rgba(4, 120, 87, 0.35), transparent 50%);
+    radial-gradient(circle at 18% 22%, rgba(99, 102, 241, 0.35), transparent 42%),
+    radial-gradient(circle at 88% 8%, rgba(245, 158, 11, 0.22), transparent 34%),
+    radial-gradient(circle at 55% 100%, rgba(8, 145, 178, 0.2), transparent 48%);
   pointer-events: none;
 }
 
@@ -168,7 +172,7 @@ body {
   align-items: flex-start;
   margin-bottom: 1rem;
   font-size: 0.92rem;
-  color: rgba(236, 253, 245, 0.88);
+  color: rgba(224, 231, 255, 0.9);
   line-height: 1.5;
 }
 
@@ -179,8 +183,8 @@ body {
   height: 7px;
   margin-top: 7px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #34d399, #059669);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+  background: linear-gradient(135deg, #fbbf24, #ea580c);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.28);
 }
 
 /* ——— Top navigation ——— */
@@ -273,7 +277,7 @@ h3 {
 .auth-hero h1 {
   font-size: clamp(2rem, 4.2vw, 2.75rem);
   font-weight: 700;
-  color: #f0fdf4;
+  color: #f8fafc;
   margin-bottom: 16px;
   line-height: 1.12;
 }
@@ -282,7 +286,7 @@ h3 {
   margin: 0;
   font-size: 1rem;
   line-height: 1.65;
-  color: rgba(236, 253, 245, 0.82);
+  color: rgba(224, 231, 255, 0.85);
 }
 
 .auth-hero .auth-lead strong {
@@ -300,9 +304,9 @@ h3 {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #a7f3d0;
-  background: rgba(16, 185, 129, 0.2);
-  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
   margin-bottom: 20px;
 }
 
@@ -472,15 +476,15 @@ button:active:not(:disabled) {
 }
 
 button.primary {
-  background: linear-gradient(180deg, #059669 0%, var(--accent) 100%);
-  border: 1px solid rgba(4, 94, 70, 0.5);
+  background: linear-gradient(180deg, #6366f1 0%, var(--accent) 100%);
+  border: 1px solid rgba(67, 56, 202, 0.55);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(4, 120, 87, 0.25), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  box-shadow: 0 2px 10px rgba(79, 70, 229, 0.28), 0 1px 0 rgba(255, 255, 255, 0.18) inset;
 }
 
 button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 16px rgba(4, 120, 87, 0.3);
+  background: linear-gradient(180deg, #818cf8 0%, #4f46e5 100%);
+  box-shadow: 0 4px 18px rgba(79, 70, 229, 0.35);
 }
 
 button.ghost {
@@ -522,7 +526,7 @@ button:disabled {
 .lang-toggle button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--accent-ink);
-  box-shadow: 0 1px 3px rgba(2, 44, 34, 0.08);
+  box-shadow: 0 1px 3px rgba(49, 46, 129, 0.1);
 }
 
 .lang-toggle button:hover:not(:disabled) {
@@ -569,7 +573,7 @@ button:disabled {
   font-size: 1.85rem;
   font-weight: 700;
   letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-muted) 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, #0891b2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -612,7 +616,7 @@ button:disabled {
   place-items: center;
   font-size: 1rem;
   background: var(--accent-soft);
-  border: 1px solid rgba(4, 120, 87, 0.15);
+  border: 1px solid rgba(79, 70, 229, 0.2);
 }
 
 .value-prop__title {
@@ -663,7 +667,7 @@ button:disabled {
 }
 
 .table tbody tr:hover td {
-  background: rgba(4, 120, 87, 0.02);
+  background: rgba(79, 70, 229, 0.03);
 }
 
 /* ——— Badges ——— */
@@ -681,7 +685,7 @@ button:disabled {
 .badge.ok {
   background: var(--ok-soft);
   color: var(--ok-fg);
-  border: 1px solid rgba(4, 120, 87, 0.22);
+  border: 1px solid rgba(8, 145, 178, 0.28);
 }
 
 .badge.bad {
@@ -727,7 +731,7 @@ button:disabled {
 .tabs button.active {
   background: var(--surface);
   color: var(--accent-ink);
-  box-shadow: 0 2px 8px rgba(2, 44, 34, 0.08);
+  box-shadow: 0 2px 8px rgba(49, 46, 129, 0.1);
   font-weight: 600;
 }
 
@@ -745,8 +749,8 @@ button:disabled {
 }
 
 .flash-banner--success {
-  border-color: rgba(4, 120, 87, 0.3);
-  background: rgba(236, 253, 245, 0.85);
+  border-color: rgba(8, 145, 178, 0.35);
+  background: rgba(236, 254, 255, 0.92);
 }
 
 .flash-banner--warning {

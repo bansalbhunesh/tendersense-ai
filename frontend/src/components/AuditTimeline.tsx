@@ -6,7 +6,7 @@ type AuditEntry = Record<string, unknown> & {
 };
 
 const ACTION_META: Record<string, { color: string; label: string; icon: string }> = {
-  ELIGIBILITY_DECISION: { color: "#10b981", label: "Eligibility Decision", icon: "📋" },
+  ELIGIBILITY_DECISION: { color: "#0891b2", label: "Eligibility Decision", icon: "📋" },
   OFFICER_OVERRIDE: { color: "#f59e0b", label: "Officer Override", icon: "👤" },
   TENDER_CREATED: { color: "#3b82f6", label: "Tender Created", icon: "📄" },
   DOCUMENT_UPLOADED: { color: "#6366f1", label: "Document Uploaded", icon: "📎" },
@@ -170,11 +170,11 @@ export default function AuditTimeline({ entries }: { entries: AuditEntry[] }) {
                   <span
                     style={{
                       fontSize: "0.62rem",
-                      color: "#10b981",
+                      color: "#0e7490",
                       padding: "1px 6px",
                       borderRadius: 4,
-                      background: "rgba(16,185,129,0.08)",
-                      border: "1px solid rgba(16,185,129,0.2)",
+                      background: "rgba(8, 145, 178, 0.09)",
+                      border: "1px solid rgba(8, 145, 178, 0.22)",
                     }}
                   >
                     immutable

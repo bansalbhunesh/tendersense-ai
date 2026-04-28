@@ -69,9 +69,9 @@ export default function BidderScoreboard({
   > = {
     ELIGIBLE: {
       label: "ELIGIBLE",
-      color: "#10b981",
-      bg: "rgba(16,185,129,0.08)",
-      border: "rgba(16,185,129,0.3)",
+      color: "#0891b2",
+      bg: "rgba(8, 145, 178, 0.09)",
+      border: "rgba(8, 145, 178, 0.32)",
       icon: "✓",
     },
     NOT_ELIGIBLE: {
@@ -172,7 +172,7 @@ export default function BidderScoreboard({
                     style={{
                       width: `${pctEligible}%`,
                       height: "100%",
-                      background: "#10b981",
+                      background: "#0891b2",
                       borderRadius: 2,
                       transition: "width 0.6s ease",
                     }}
@@ -187,7 +187,7 @@ export default function BidderScoreboard({
                     color: "var(--muted)",
                   }}
                 >
-                  <span style={{ color: "#047857", fontWeight: 600 }}>✓ {s.eligible} eligible</span>
+                  <span style={{ color: "#0e7490", fontWeight: 600 }}>✓ {s.eligible} eligible</span>
                   <span style={{ color: "#b91c1c", fontWeight: 600 }}>✗ {s.notEligible} not met</span>
                   <span style={{ color: "#c2410c", fontWeight: 600 }}>⚠ {s.needsReview} review</span>
                   <span>of {s.total} criteria</span>

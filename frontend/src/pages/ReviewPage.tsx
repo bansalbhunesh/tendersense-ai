@@ -371,10 +371,10 @@ export default function ReviewPage() {
               style={{
                 padding: "4px 12px",
                 borderRadius: 6,
-                background: "rgba(16,185,129,0.08)",
-                border: "1px solid rgba(16,185,129,0.2)",
+                background: "rgba(8, 145, 178, 0.09)",
+                border: "1px solid rgba(8, 145, 178, 0.22)",
                 fontSize: "0.75rem",
-                color: "#10b981",
+                color: "#0e7490",
                 fontWeight: 700,
               }}
             >
