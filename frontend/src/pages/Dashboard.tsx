@@ -102,9 +102,31 @@ export default function Dashboard() {
             </button>
           </form>
         </div>
-        <div className="panel">
-          <h2>{t("dashboard.pipeline")}</h2>
-          <p className="muted">{t("dashboard.pipelineCopy")}</p>
+        <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <h2 style={{ margin: "0 0 6px" }}>Why this matters</h2>
+            <p className="muted" style={{ margin: 0, fontSize: "0.9rem", lineHeight: 1.65 }}>
+              Every year, Indian MSMEs lose tenders they deserve — not because they're unqualified,
+              but because a buried clause, a misread figure, or an inconsistent document slips past
+              manual review. TenderSense AI makes the reasoning visible and the process auditable.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              { icon: "⚡", label: "Conflict detection", desc: "Flags contradictory figures across documents before a verdict is issued" },
+              { icon: "🔍", label: "Explainable verdicts", desc: "Every ELIGIBLE / NOT ELIGIBLE ties to a clause, a value, and a confidence score" },
+              { icon: "🛡️", label: "Human-in-the-loop", desc: "Ambiguous cases never silently disqualify — they route to the officer queue" },
+              { icon: "🇮🇳", label: "Bharat-first", desc: "Devanagari OCR · Bhashini translation · sovereign mode for MeitY compliance" },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <span style={{ fontSize: "1.1rem", marginTop: 1, flexShrink: 0 }}>{icon}</span>
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "var(--text)" }}>{label} — </span>
+                  <span className="muted" style={{ fontSize: "0.85rem" }}>{desc}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

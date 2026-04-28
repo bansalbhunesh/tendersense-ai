@@ -3,7 +3,9 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
 import AppHeader from "../components/AppHeader";
+import ContradictionAlert from "../components/ContradictionAlert";
 import ReasoningGraph from "../components/ReasoningGraph";
+import RiskScorePanel from "../components/RiskScorePanel";
 import { useToast } from "../components/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
@@ -604,7 +606,14 @@ export default function TenderWorkspace() {
       )}
 
       {tab === "results" && (
-        <div className="grid2">
+        <>
+          <RiskScorePanel decisions={results?.decisions ?? []} />
+          <ContradictionAlert
+            decisions={results?.decisions ?? []}
+            bidderNameMap={bidderNameMap}
+            criterionLabelById={criterionLabelById}
+          />
+          <div className="grid2">
           <div className="panel">
             <h2>{t("workspace.verdictMatrix")}</h2>
             <div className="row" style={{ marginBottom: 10 }}>
@@ -713,6 +722,7 @@ export default function TenderWorkspace() {
             <ReasoningGraph graph={results?.graph as { nodes: []; edges: [] } | null} />
           </div>
         </div>
+        </>
       )}
     </div>
   );
