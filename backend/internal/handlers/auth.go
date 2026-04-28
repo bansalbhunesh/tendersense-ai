@@ -117,8 +117,8 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			util.BadRequest(c, err.Error())
 			return
 		}
-		req.Email = normalizeEmail(req.Email)
-		if req.Email == "" {
+		email := normalizeEmail(req.Email)
+		if email == "" {
 			util.BadRequest(c, "email is required")
 			return
 		}
@@ -132,7 +132,7 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		id := uuid.NewString()
-		_, err = db.Exec(`INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)`, id, req.Email, string(hash))
+		_, err = db.Exec(`INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)`, id, email, string(hash))
 		if err != nil {
 			if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
 				util.Conflict(c, "an account with this email already exists")
@@ -141,7 +141,7 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			}
 			return
 		}
-		token, err := middleware.GenerateToken(id, req.Email)
+		token, err := middleware.GenerateToken(id, email)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
@@ -157,22 +157,26 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			util.BadRequest(c, err.Error())
 			return
 		}
-		req.Email = normalizeEmail(req.Email)
-		if req.Email == "" {
+		email := normalizeEmail(req.Email)
+		if email == "" {
 			util.BadRequest(c, "email is required")
 			return
 		}
 		var id, hash string
-		err := db.QueryRow(`SELECT id, password_hash FROM users WHERE email=$1`, req.Email).Scan(&id, &hash)
-		if err != nil {
+		err := db.QueryRow(`SELECT id, password_hash FROM users WHERE email=$1`, email).Scan(&id, &hash)
+		if err == sql.ErrNoRows {
 			util.Unauthorized(c, "invalid credentials")
+			return
+		}
+		if err != nil {
+			util.InternalError(c, "database error")
 			return
 		}
 		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 			util.Unauthorized(c, "invalid credentials")
 			return
 		}
-		token, err := middleware.GenerateToken(id, req.Email)
+		token, err := middleware.GenerateToken(id, email)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
@@ -196,7 +200,6 @@ func ForgotPassword(db *sql.DB) gin.HandlerFunc {
 
 		var userID string
 		err := db.QueryRow(`SELECT id FROM users WHERE email=$1`, req.Email).Scan(&userID)
-		// Do not leak whether account exists.
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusOK, gin.H{"message": "If an account exists, a reset token has been issued."})
 			return
@@ -221,7 +224,6 @@ func ForgotPassword(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		if err := sendResetEmail(req.Email, token); err != nil {
-			// Optional dev fallback: expose token directly for non-email environments.
 			if strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_INSECURE_RESET_TOKEN_RESPONSE")), "true") {
 				log.Printf("warn: reset email failed for %s, returning token due to ALLOW_INSECURE_RESET_TOKEN_RESPONSE=true: %v", req.Email, err)
 				c.JSON(http.StatusOK, gin.H{

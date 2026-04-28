@@ -33,32 +33,34 @@ type Node = {
 
 type Edge = { from: string; to: string; label?: string };
 
-type VerdictColor = { stroke: string; fill: string; text: string; dot: string };
+type VerdictColor = { stroke: string; fill: string; text: string; dot: string; titleFill: string };
 
 function verdictColors(verdict: string): VerdictColor {
   const v = verdict.toUpperCase();
   if (v === "PASS" || v === "ELIGIBLE") {
     return {
-      stroke: "rgba(16,185,129,0.7)",
-      fill: "rgba(16,185,129,0.15)",
-      text: "#6ee7b7",
-      dot: "#10b981",
+      stroke: "rgba(4, 120, 87, 0.45)",
+      fill: "rgba(4, 120, 87, 0.1)",
+      text: "#0f766e",
+      dot: "#059669",
+      titleFill: "#065f46",
     };
   }
   if (v === "FAIL" || v === "NOT_ELIGIBLE") {
     return {
-      stroke: "rgba(239,68,68,0.7)",
-      fill: "rgba(239,68,68,0.15)",
-      text: "#fda4af",
-      dot: "#ef4444",
+      stroke: "rgba(185, 28, 28, 0.45)",
+      fill: "rgba(185, 28, 28, 0.08)",
+      text: "#b91c1c",
+      dot: "#dc2626",
+      titleFill: "#991b1b",
     };
   }
-  // NEEDS_REVIEW + anything ambiguous → amber
   return {
-    stroke: "rgba(245,158,11,0.7)",
-    fill: "rgba(245,158,11,0.15)",
-    text: "#fcd34d",
-    dot: "#f59e0b",
+    stroke: "rgba(194, 65, 12, 0.45)",
+    fill: "rgba(194, 65, 12, 0.1)",
+    text: "#c2410c",
+    dot: "#ea580c",
+    titleFill: "#9a3412",
   };
 }
 
@@ -229,10 +231,10 @@ export default function ReasoningGraph({
                   fill={colors.fill}
                   stroke={colors.stroke}
                 />
-                <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
+                <text x={p.x + 10} y={p.y + 22} fill={colors.titleFill} fontSize="11" fontWeight="700">
                   {t("graph.criterionLabel")}
                 </text>
-                <text x={p.x + 10} y={p.y + 40} fill="#d1d5db" fontSize="11">
+                <text x={p.x + 10} y={p.y + 40} fill={colors.text} fontSize="11">
                   {summary}
                 </text>
               </g>
@@ -262,7 +264,7 @@ export default function ReasoningGraph({
                   fill={colors.fill}
                   stroke={colors.stroke}
                 />
-                <text x={p.x + 10} y={p.y + 22} fill="#f9fafb" fontSize="11" fontWeight="700">
+                <text x={p.x + 10} y={p.y + 22} fill={colors.titleFill} fontSize="11" fontWeight="700">
                   {n.label}
                 </text>
                 <text x={p.x + 10} y={p.y + 40} fill={colors.text} fontSize="11">

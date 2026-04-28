@@ -103,7 +103,7 @@ export default function AuditTimeline({ entries }: { entries: AuditEntry[] }) {
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
-                background: "rgba(0,0,0,0.15)",
+                background: "var(--inset)",
                 border: `1px solid ${meta.color}22`,
                 transition: "border-color 0.2s",
               }}
@@ -159,8 +159,8 @@ export default function AuditTimeline({ entries }: { entries: AuditEntry[] }) {
                     className="mono"
                     style={{
                       fontSize: "0.68rem",
-                      color: "rgba(148,163,184,0.7)",
-                      background: "rgba(0,0,0,0.2)",
+                      color: "var(--muted)",
+                      background: "var(--surface-2)",
                       padding: "2px 8px",
                       borderRadius: 4,
                     }}

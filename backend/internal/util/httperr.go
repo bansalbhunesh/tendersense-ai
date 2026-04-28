@@ -9,12 +9,14 @@ import (
 
 // Error codes used by the structured error response.
 const (
-	CodeBadRequest   = "bad_request"
-	CodeUnauthorized = "unauthorized"
-	CodeForbidden    = "forbidden"
-	CodeNotFound     = "not_found"
-	CodeConflict     = "conflict"
-	CodeInternal     = "internal_error"
+	CodeBadRequest          = "bad_request"
+	CodeUnauthorized        = "unauthorized"
+	CodeForbidden           = "forbidden"
+	CodeNotFound            = "not_found"
+	CodeConflict            = "conflict"
+	CodeInternal            = "internal_error"
+	CodeRateLimited         = "rate_limited"
+	CodeUpstreamUnavailable = "upstream_unavailable"
 )
 
 // ErrorBody is the structured error envelope returned for 4xx/5xx responses.
@@ -101,4 +103,18 @@ func InternalError(c *gin.Context, message string) {
 		message = "internal error"
 	}
 	WriteError(c, http.StatusInternalServerError, CodeInternal, message)
+}
+
+func TooManyRequests(c *gin.Context, message string) {
+	if message == "" {
+		message = "too many requests; try again later"
+	}
+	WriteError(c, http.StatusTooManyRequests, CodeRateLimited, message)
+}
+
+func BadGateway(c *gin.Context, message string) {
+	if message == "" {
+		message = "upstream service error"
+	}
+	WriteError(c, http.StatusBadGateway, CodeUpstreamUnavailable, message)
 }

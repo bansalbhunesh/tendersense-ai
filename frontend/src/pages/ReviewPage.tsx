@@ -175,10 +175,10 @@ export default function ReviewPage() {
       <AppHeader
         left={
           <>
-            <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
+            <Link to="/app" className="link-back">
               {t("review.backDashboard")}
             </Link>
-            <strong style={{ marginLeft: 12 }}>{t("review.title")}</strong>
+            <strong className="page-title-inline">{t("review.title")}</strong>
           </>
         }
       />
@@ -213,7 +213,7 @@ export default function ReviewPage() {
                     setSelectedId(it.id);
                     setVerdict("ELIGIBLE");
                   }}
-                  className="panel"
+                  className={`panel selectable-card${isActive ? " is-active" : ""}`}
                   style={{
                     display: "block",
                     width: "100%",
@@ -221,8 +221,6 @@ export default function ReviewPage() {
                     marginTop: 10,
                     padding: 14,
                     cursor: "pointer",
-                    borderColor: isActive ? "var(--saffron)" : undefined,
-                    boxShadow: isActive ? "0 0 0 2px var(--saffron-glow)" : undefined,
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>
@@ -258,7 +256,7 @@ export default function ReviewPage() {
           )}
           {selected && (
             <div data-testid="review-detail">
-              <div className="panel" style={{ marginBottom: 12 }}>
+              <div className="nest-card" style={{ marginBottom: 12 }}>
                 <div className="mono" style={{ marginBottom: 8, fontSize: "0.8rem" }}>
                   {selected.tender_title || selected.tender_id.slice(0, 8)} ·{" "}
                   {selected.bidder_name || selected.bidder_id.slice(0, 8)} ·{" "}

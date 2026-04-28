@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
-	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
+	"github.com/tendersense/backend/internal/config"
 	"github.com/tendersense/backend/internal/db"
 	"github.com/tendersense/backend/internal/handlers"
 	"github.com/tendersense/backend/internal/middleware"
@@ -32,7 +31,11 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using platform environment variables")
 	}
-	validateRequiredEnv()
+	config.ValidateCoreSecrets()
+	appCfg, err := config.LoadApp()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	database, err := db.Connect()
 	if err != nil {
@@ -64,46 +67,15 @@ func main() {
 	r.Use(gin.Recovery())
 	r.MaxMultipartMemory = 50 << 20 // 50 MB max upload
 
-	// Modern CORS configuration
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = false
-	config.AllowWildcard = true
-	var origins []string
-	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
-		if s := strings.TrimSpace(o); s != "" {
-			origins = append(origins, s)
-		}
+	corsCfg := cors.Config{
+		AllowOriginFunc:  appCfg.OriginAllowed,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type", "Accept"},
+		AllowCredentials: false,
 	}
-	config.AllowOrigins = origins
-	if len(origins) == 0 {
-		log.Fatal("ALLOWED_ORIGINS must contain at least one non-empty origin (comma-separated)")
-	}
-	// Optional regex-based origin allowlist for dynamic deploy URLs
-	// (e.g. Vercel previews). Keep explicit ALLOWED_ORIGINS as the primary control.
-	originRegex := strings.TrimSpace(os.Getenv("ALLOWED_ORIGIN_REGEX"))
-	if originRegex != "" {
-		re, err := regexp.Compile(originRegex)
-		if err != nil {
-			log.Fatalf("invalid ALLOWED_ORIGIN_REGEX: %v", err)
-		}
-		config.AllowOriginWithContextFunc = func(_ *gin.Context, origin string) bool {
-			if re.MatchString(origin) {
-				return true
-			}
-			origin = strings.TrimSpace(origin)
-			for _, o := range origins {
-				if origin == o {
-					return true
-				}
-			}
-			return false
-		}
-	}
-	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Accept"}
-	r.Use(cors.New(config))
+	r.Use(cors.New(corsCfg))
 
-	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+	r.GET("/health", healthHandler(database))
 
 	api := r.Group("/api/v1")
 	api.GET("/version", func(c *gin.Context) {
@@ -146,15 +118,14 @@ func main() {
 		}
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	port := appCfg.Port
 
 	srv := &http.Server{
-		Addr:        ":" + port,
-		Handler:     r,
-		ReadTimeout: 15 * time.Second,
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 		// Keep aligned with long-running evaluation path.
 		WriteTimeout: 16 * time.Minute,
 		IdleTimeout:  60 * time.Second,
@@ -190,18 +161,17 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func validateRequiredEnv() {
-	required := []string{"JWT_SECRET", "DATABASE_URL", "ALLOWED_ORIGINS"}
-	missing := make([]string, 0)
-	for _, key := range required {
-		if strings.TrimSpace(os.Getenv(key)) == "" {
-			missing = append(missing, key)
+func healthHandler(database *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := database.PingContext(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status":   "unhealthy",
+				"database": "unreachable",
+			})
+			return
 		}
-	}
-	if len(missing) > 0 {
-		log.Fatal(fmt.Sprintf("missing required environment variables: %v", missing))
-	}
-	if secret := os.Getenv("JWT_SECRET"); secret != "" && len(secret) < 32 {
-		log.Printf("warning: JWT_SECRET is shorter than 32 chars (len=%d) — strongly recommend a longer secret in production", len(secret))
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
 }

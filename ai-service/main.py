@@ -263,21 +263,29 @@ async def process_document_upload(
     file: UploadFile = File(...),
     document_id: str = Form(default=""),
 ) -> dict:
-    suffix = os.path.splitext(file.filename or "")[1]
+    """OCR an uploaded file without shared filesystem paths (for split backend/AI deploys)."""
+    suffix = os.path.splitext(file.filename or "")[1] or ".bin"
     tmp_path = ""
     try:
+        raw = await file.read()
+        max_b = int(os.getenv("MAX_UPLOAD_BYTES", str(55 * 1024 * 1024)))
+        if len(raw) > max_b:
+            _log_event("process_document_upload_rejected", reason="too_large", bytes=len(raw))
+            return {"error": "file_too_large", "text": "", "quality_score": 0.0, "pages": []}
         with tempfile.NamedTemporaryFile(
             delete=False,
             suffix=suffix,
             dir=tempfile.gettempdir(),
         ) as tmp:
-            chunk = await file.read()
-            tmp.write(chunk)
+            tmp.write(raw)
             tmp_path = tmp.name
-        req = ProcessDocReq(path=tmp_path, document_id=document_id)
+        _log_event(
+            "process_document_upload_start",
+            document_id=document_id,
+            bytes=len(raw),
+        )
         try:
-            # Reuse the same OCR path and response shape as the file-path endpoint.
-            r: OCRResult = process_path(tmp_path, req.document_id)
+            r: OCRResult = process_path(tmp_path, document_id)
             pages_out = [
                 {
                     "page": p.page_no,
@@ -287,16 +295,23 @@ async def process_document_upload(
                 }
                 for p in r.pages
             ]
-            return {
+            out = {
                 "text": r.text,
                 "quality_score": r.quality_score,
                 "engine": r.engine,
                 "pages": pages_out,
-                "document_id": req.document_id,
+                "document_id": document_id,
             }
+            _log_event(
+                "process_document_upload_ok",
+                document_id=document_id,
+                pages=len(pages_out),
+                quality=r.quality_score,
+            )
+            return out
         except Exception:
-            logger.exception("OCR processing failed for uploaded %s", req.document_id)
-            return {"error": "ocr_failed", "text": "", "quality_score": 0.0}
+            logger.exception("OCR processing failed for uploaded %s", document_id)
+            return {"error": "ocr_failed", "text": "", "quality_score": 0.0, "pages": []}
     finally:
         if tmp_path:
             try:

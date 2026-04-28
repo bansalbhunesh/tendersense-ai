@@ -1,12 +1,13 @@
 package middleware
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
+
+	"github.com/tendersense/backend/internal/util"
 )
 
 type ipLimiter struct {
@@ -56,7 +57,7 @@ func AuthRouteLimiter(rpm int, burst int) gin.HandlerFunc {
 		lim := v.lim
 		authMu.Unlock()
 		if !lim.Allow() {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many requests; try again later"})
+			util.TooManyRequests(c, "too many authentication attempts; try again later")
 			return
 		}
 		c.Next()

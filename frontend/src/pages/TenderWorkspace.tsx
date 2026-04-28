@@ -371,18 +371,18 @@ export default function TenderWorkspace() {
       <AppHeader
         left={
           <>
-            <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
+            <Link to="/app" className="link-back">
               ← {t("common.back")}
             </Link>
-            <strong style={{ marginLeft: 12 }}>
-              {String(tender?.title || t("workspace.fallbackTitle"))}
-            </strong>
+            <strong className="page-title-inline">{String(tender?.title || t("workspace.fallbackTitle"))}</strong>
           </>
         }
         actions={
-          <Link to="/review">
-            <button className="ghost">{t("common.reviewQueueButton")}</button>
-          </Link>
+            <Link to="/review">
+              <button type="button" className="ghost">
+                {t("common.reviewQueueButton")}
+              </button>
+            </Link>
         }
       />
 
@@ -407,18 +407,15 @@ export default function TenderWorkspace() {
 
       {msg && (
         <div
-          className="panel"
-          style={{
-            marginBottom: 14,
-            borderColor:
-              msgType === "error"
-                ? "rgba(239,68,68,0.45)"
-                : msgType === "success"
-                  ? "rgba(16,185,129,0.45)"
-                  : msgType === "warning"
-                    ? "rgba(245,158,11,0.45)"
-                    : "rgba(59,130,246,0.35)",
-          }}
+          className={`panel flash-banner ${
+            msgType === "error"
+              ? "flash-banner--error"
+              : msgType === "success"
+                ? "flash-banner--success"
+                : msgType === "warning"
+                  ? "flash-banner--warning"
+                  : "flash-banner--info"
+          }`}
         >
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <span className="mono" data-testid="workspace-msg">
@@ -452,7 +449,7 @@ export default function TenderWorkspace() {
             const val = c.value != null ? String(c.value) : "—";
             const rawText = String(c.text_raw || "").slice(0, 280);
             return (
-              <div key={id || i} className="panel" style={{ marginTop: 10 }}>
+              <div key={id || i} className="nest-card">
                 <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
                   <strong>{field}</strong>
                   <span className="mono muted" style={{ fontSize: "0.75rem" }}>

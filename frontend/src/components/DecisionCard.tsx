@@ -73,7 +73,7 @@ function ConfBar({
           flex: 1,
           height: 6,
           borderRadius: 3,
-          background: "rgba(255,255,255,0.07)",
+          background: "var(--progress-track)",
           overflow: "hidden",
         }}
       >
@@ -158,14 +158,14 @@ function EligibleCard({
             style={{
               padding: "10px 12px",
               borderRadius: 8,
-              background: "rgba(0,0,0,0.15)",
-              border: "1px solid rgba(148,163,184,0.15)",
+              background: "var(--inset)",
+              border: "1px solid var(--inset-border)",
             }}
           >
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Requirement
             </div>
-            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#d1fae5" }}>{reqLine}</div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#065f46" }}>{reqLine}</div>
           </div>
           <div
             style={{
@@ -178,7 +178,7 @@ function EligibleCard({
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Found
             </div>
-            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#6ee7b7" }}>{foundLine}</div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#047857" }}>{foundLine}</div>
             <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 2 }}>{sourceDoc}</div>
           </div>
         </div>
@@ -202,7 +202,7 @@ function EligibleCard({
           background: "rgba(16,185,129,0.08)",
           border: "1px solid rgba(16,185,129,0.2)",
           fontSize: "0.7rem",
-          color: "#6ee7b7",
+          color: "#047857",
         }}
       >
         Auto-approved · no human review required
@@ -278,8 +278,8 @@ function NotEligibleCard({
             style={{
               padding: "10px 12px",
               borderRadius: 8,
-              background: "rgba(0,0,0,0.15)",
-              border: "1px solid rgba(148,163,184,0.15)",
+              background: "var(--inset)",
+              border: "1px solid var(--inset-border)",
             }}
           >
             <div style={{ fontSize: "0.65rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -411,7 +411,7 @@ function ConflictCard({
             border: "1px solid rgba(245,158,11,0.4)",
             fontSize: "0.72rem",
             fontWeight: 800,
-            color: "#fcd34d",
+            color: "#9a3412",
             flexShrink: 0,
           }}
         >
@@ -422,7 +422,7 @@ function ConflictCard({
       {/* Document comparison */}
       <div
         style={{
-          background: "rgba(0,0,0,0.15)",
+          background: "var(--inset)",
           border: "1px solid rgba(245,158,11,0.25)",
           borderRadius: 10,
           padding: 14,
@@ -519,7 +519,7 @@ function ConflictCard({
           background: "rgba(245,158,11,0.1)",
           border: "1px solid rgba(245,158,11,0.35)",
           fontSize: "0.72rem",
-          color: "#fcd34d",
+          color: "#9a3412",
           fontWeight: 700,
         }}
       >
@@ -609,7 +609,7 @@ function ReviewCard({
           background: "rgba(59,130,246,0.08)",
           border: "1px solid rgba(59,130,246,0.2)",
           fontSize: "0.7rem",
-          color: "#93c5fd",
+          color: "#1d4ed8",
         }}
       >
         → Queued for officer review · will not auto-approve

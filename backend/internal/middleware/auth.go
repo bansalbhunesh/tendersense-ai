@@ -3,13 +3,14 @@ package middleware
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/tendersense/backend/internal/util"
 )
 
 type Claims struct {
@@ -41,12 +42,12 @@ func GenerateToken(userID, email string) (string, error) {
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if len(JWTSecret()) == 0 {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "auth not configured"})
+			util.InternalError(c, "authentication is not configured")
 			return
 		}
 		h := c.GetHeader("Authorization")
 		if h == "" || !strings.HasPrefix(h, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			util.Unauthorized(c, "missing bearer token")
 			return
 		}
 		raw := strings.TrimPrefix(h, "Bearer ")
@@ -64,7 +65,7 @@ func AuthRequired() gin.HandlerFunc {
 			jwt.WithExpirationRequired(),
 		)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			util.Unauthorized(c, "invalid or expired token")
 			return
 		}
 		c.Set("user_id", claims.UserID)

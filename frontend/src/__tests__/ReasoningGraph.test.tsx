@@ -64,9 +64,9 @@ describe("ReasoningGraph", () => {
     const pass = container.querySelector("[data-testid='graph-node-v1'] rect")!;
     const fail = container.querySelector("[data-testid='graph-node-v2'] rect")!;
     const review = container.querySelector("[data-testid='graph-node-v3'] rect")!;
-    expect(pass.getAttribute("stroke")).toMatch(/16,185,129/); // green
-    expect(fail.getAttribute("stroke")).toMatch(/239,68,68/); // red
-    expect(review.getAttribute("stroke")).toMatch(/245,158,11/); // amber
+    expect(pass.getAttribute("stroke")).toMatch(/4,\s*120,\s*87/); // emerald
+    expect(fail.getAttribute("stroke")).toMatch(/185,\s*28,\s*28/); // red
+    expect(review.getAttribute("stroke")).toMatch(/194,\s*65,\s*12/); // amber
   });
 
   it("opens a detail panel when a node is clicked", async () => {

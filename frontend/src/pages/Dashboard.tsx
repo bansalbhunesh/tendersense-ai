@@ -54,7 +54,6 @@ export default function Dashboard() {
       toast.success(t("dashboard.tenderCreated"));
       setTitle("");
       setDescription("");
-      // Reset to first page so freshly created tender is visible.
       if (offset !== 0) setOffset(0);
       else await load(0, pageSize);
     } catch (ex: unknown) {
@@ -71,54 +70,43 @@ export default function Dashboard() {
       ? t("dashboard.totalCount", { count: totalCount })
       : t("dashboard.loadedCount", { count: rows.length });
 
+  const stats = [
+    { value: "6.3 Cr", label: "MSMEs in India", sub: "Small businesses eligible for public tenders" },
+    { value: "₹3L Cr+", label: "Annual public procurement", sub: "Government spending evaluated manually today" },
+    { value: "Explainable", label: "Evaluation by design", sub: "Verdicts grounded in clauses, figures, and evidence" },
+  ];
+
+  const valueProps = [
+    { icon: "◆", label: "Conflict detection", desc: "Flags contradictory figures across documents before a verdict is issued." },
+    { icon: "◇", label: "Explainable verdicts", desc: "Every ELIGIBLE / NOT ELIGIBLE ties to a clause, a value, and a confidence score." },
+    { icon: "◈", label: "Human-in-the-loop", desc: "Ambiguous cases never silently disqualify — they route to the officer queue." },
+    { icon: "◎", label: "Bharat-first", desc: "Devanagari OCR · translation · workflows tuned for Indian procurement practice." },
+  ];
+
   return (
     <div className="shell">
       <AppHeader
         left={
           <>
-            <strong>{t("common.appName")}</strong>
-            <span>{t("dashboard.headerSubtitle")}</span>
+            <strong className="brand-wordmark">{t("common.appName")}</strong>
+            <span className="brand-tagline">{t("dashboard.headerSubtitle")}</span>
           </>
         }
         actions={
           <Link to="/review">
-            <button className="ghost">{t("common.reviewQueueButton")}</button>
+            <button type="button" className="ghost">
+              {t("common.reviewQueueButton")}
+            </button>
           </Link>
         }
       />
 
-      {/* Bharat impact stat bar */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        {[
-          { value: "6.3 Cr", label: "MSMEs in India", sub: "Small businesses eligible for public tenders" },
-          { value: "₹3L Cr+", label: "Annual public procurement", sub: "Government spending evaluated manually today" },
-          { value: "0%", label: "Explainable AI in use", sub: "No auditable AI in Indian procurement — until now" },
-        ].map(({ value, label, sub }) => (
-          <div
-            key={label}
-            className="panel"
-            style={{ textAlign: "center", padding: "18px 16px" }}
-          >
-            <div
-              style={{
-                fontSize: "1.8rem",
-                fontWeight: 900,
-                letterSpacing: "-0.02em",
-                color: "var(--saffron)",
-                marginBottom: 4,
-              }}
-            >
-              {value}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: "0.82rem", marginBottom: 3 }}>{label}</div>
-            <div className="muted" style={{ fontSize: "0.72rem", lineHeight: 1.4 }}>{sub}</div>
+      <div className="stat-grid">
+        {stats.map(({ value, label, sub }) => (
+          <div key={label} className="stat-card">
+            <div className="stat-card__value">{value}</div>
+            <div className="stat-card__label">{label}</div>
+            <p className="stat-card__sub">{sub}</p>
           </div>
         ))}
       </div>
@@ -126,39 +114,38 @@ export default function Dashboard() {
       <div className="grid2">
         <div className="panel">
           <h2>{t("dashboard.newTender")}</h2>
-          <form onSubmit={create}>
+          <p className="muted" style={{ marginTop: 4 }}>
+            {t("dashboard.pipelineCopy")}
+          </p>
+          <form style={{ marginTop: 18 }} onSubmit={create}>
             <label>{t("dashboard.title")}</label>
             <input data-testid="tender-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
             <div style={{ height: 10 }} />
             <label>{t("dashboard.description")}</label>
             <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-            <div style={{ height: 12 }} />
+            <div style={{ height: 14 }} />
             <button data-testid="tender-create" className="primary" type="submit">
               {t("dashboard.createTender")}
             </button>
           </form>
         </div>
-        <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div>
             <h2 style={{ margin: "0 0 6px" }}>Why this matters</h2>
-            <p className="muted" style={{ margin: 0, fontSize: "0.9rem", lineHeight: 1.65 }}>
-              Every year, Indian MSMEs lose tenders they deserve — not because they're unqualified,
-              but because a buried clause, a misread figure, or an inconsistent document slips past
-              manual review. TenderSense AI makes the reasoning visible and the process auditable.
+            <p className="muted" style={{ margin: 0, fontSize: "0.92rem", lineHeight: 1.65 }}>
+              Indian MSMEs lose tenders they deserve — not because they are unqualified, but because a buried clause or
+              inconsistent document slips past manual review. TenderSense makes reasoning visible and the process auditable.
             </p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              { icon: "⚡", label: "Conflict detection", desc: "Flags contradictory figures across documents before a verdict is issued" },
-              { icon: "🔍", label: "Explainable verdicts", desc: "Every ELIGIBLE / NOT ELIGIBLE ties to a clause, a value, and a confidence score" },
-              { icon: "🛡️", label: "Human-in-the-loop", desc: "Ambiguous cases never silently disqualify — they route to the officer queue" },
-              { icon: "🇮🇳", label: "Bharat-first", desc: "Devanagari OCR · Bhashini translation · sovereign mode for MeitY compliance" },
-            ].map(({ icon, label, desc }) => (
-              <div key={label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <span style={{ fontSize: "1.1rem", marginTop: 1, flexShrink: 0 }}>{icon}</span>
+          <div className="value-prop-list" style={{ marginTop: 8 }}>
+            {valueProps.map(({ icon, label, desc }) => (
+              <div key={label} className="value-prop">
+                <div className="value-prop__icon" aria-hidden>
+                  {icon}
+                </div>
                 <div>
-                  <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "var(--text)" }}>{label} — </span>
-                  <span className="muted" style={{ fontSize: "0.85rem" }}>{desc}</span>
+                  <div className="value-prop__title">{label}</div>
+                  <p className="value-prop__desc">{desc}</p>
                 </div>
               </div>
             ))}
@@ -166,62 +153,64 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div style={{ height: 16 }} />
+      <div style={{ height: 8 }} />
 
-      <div className="panel" style={{ marginTop: 24 }}>
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-          <h2>{t("dashboard.activeTenders")}</h2>
-          <span className="badge ok" data-testid="tenders-total">{totalLabel}</span>
+      <div className="panel" style={{ marginTop: 22 }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>{t("dashboard.activeTenders")}</h2>
+          <span className="badge ok" data-testid="tenders-total">
+            {totalLabel}
+          </span>
         </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t("dashboard.tableTitle")}</th>
-              <th>{t("dashboard.tableStatus")}</th>
-              <th>{t("dashboard.tableAction")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
-                  {t("dashboard.loadingTenders")}
-                </td>
+                <th>{t("dashboard.tableTitle")}</th>
+                <th>{t("dashboard.tableStatus")}</th>
+                <th>{t("dashboard.tableAction")}</th>
               </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted" data-testid="tenders-empty">
-                  {t("dashboard.empty")}
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.title}</td>
-                  <td>
-                    <span className={`badge ${r.status === "open" ? "ok" : "review"}`}>{r.status}</span>
-                  </td>
-                  <td>
-                    <Link to={`/tender/${r.id}`}>
-                      <button className="ghost" style={{ padding: "6px 12px", fontSize: "0.85rem" }}>
-                        {t("dashboard.openWorkspace")}
-                      </button>
-                    </Link>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted">
+                    {t("dashboard.loadingTenders")}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: "center", padding: 40 }} className="muted" data-testid="tenders-empty">
+                    {t("dashboard.empty")}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.title}</td>
+                    <td>
+                      <span className={`badge ${r.status === "open" ? "ok" : "review"}`}>{r.status}</span>
+                    </td>
+                    <td>
+                      <Link to={`/tender/${r.id}`}>
+                        <button type="button" className="ghost" style={{ padding: "6px 14px", fontSize: "0.85rem" }}>
+                          {t("dashboard.openWorkspace")}
+                        </button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {showPagination && (
-          <div
-            className="row"
-            data-testid="tenders-pagination"
-            style={{ marginTop: 16, justifyContent: "space-between" }}
-          >
+          <div className="row" data-testid="tenders-pagination" style={{ marginTop: 16, justifyContent: "space-between" }}>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <label htmlFor="tender-page-size" style={{ margin: 0 }}>{t("common.pageSize")}</label>
+              <label htmlFor="tender-page-size" style={{ margin: 0 }}>
+                {t("common.pageSize")}
+              </label>
               <select
                 id="tender-page-size"
                 data-testid="tenders-page-size"
@@ -234,7 +223,9 @@ export default function Dashboard() {
                 style={{ width: 100 }}
               >
                 {PAGE_SIZES.map((n) => (
-                  <option key={n} value={n}>{n}</option>
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
                 ))}
               </select>
             </div>

@@ -1,12 +1,13 @@
 package middleware
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
+
+	"github.com/tendersense/backend/internal/util"
 )
 
 type userEvalLimiter struct {
@@ -60,7 +61,7 @@ func EvaluateRouteLimiter(perMinute int, burst int) gin.HandlerFunc {
 		lim := v.lim
 		evalMu.Unlock()
 		if !lim.Allow() {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "evaluation rate limit exceeded; try again later"})
+			util.TooManyRequests(c, "evaluation rate limit exceeded; try again later")
 			return
 		}
 		c.Next()

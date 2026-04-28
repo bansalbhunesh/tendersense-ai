@@ -115,7 +115,7 @@ export default function ContradictionAlert({
                       flexWrap: "wrap",
                     }}
                   >
-                    <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "#f9fafb" }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--text)" }}>
                       {label.length > 70 ? `${label.slice(0, 67)}…` : label}
                     </span>
                     <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>

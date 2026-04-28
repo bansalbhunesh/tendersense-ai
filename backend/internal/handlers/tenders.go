@@ -154,14 +154,14 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		_, err = db.Exec(`INSERT INTO documents (id, owner_type, owner_id, filename, storage_key, doc_type) VALUES ($1,'tender',$2,$3,$4,'tender')`,
 			docID, tenderID, name, dest)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, "could not save document record")
 			return
 		}
 
 		if err := c.SaveUploadedFile(fh, dest); err != nil {
 			// DB row inserted but file failed — clean up the DB row
 			db.Exec(`DELETE FROM documents WHERE id=$1`, docID)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			util.InternalError(c, "could not store uploaded file")
 			return
 		}
 
@@ -172,7 +172,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Engine  string  `json:"engine"`
 		}
 		if err := util.PostDocumentFile(c.Request.Context(), dest, docID, &ocrRes); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "ocr service unavailable", "detail": err.Error()})
+			util.BadGateway(c, "OCR service is temporarily unavailable; please try again in a moment")
 			return
 		}
 		payload, _ := json.Marshal(ocrRes)
@@ -186,7 +186,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		insertedCount := 0
 		if ocrRes.Text != "" {
 			if err := util.PostJSON(c.Request.Context(), "/v1/extract-criteria", map[string]string{"text": ocrRes.Text, "tender_id": tenderID}, &extRes); err != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "criteria extraction unavailable", "detail": err.Error()})
+				util.BadGateway(c, "criteria extraction is temporarily unavailable; please try again later")
 				return
 			}
 			for _, cr := range extRes.Criteria {

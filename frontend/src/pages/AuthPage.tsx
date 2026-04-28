@@ -42,7 +42,6 @@ export default function AuthPage() {
         if (emailParam) setEmail(emailParam);
         if (tokenParam) setResetToken(tokenParam);
       }
-      // Clean URL so tokens are not left in browser history/share.
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -70,7 +69,10 @@ export default function AuthPage() {
     e.preventDefault();
     if (busy) return;
     const validationError = validate("login");
-    if (validationError) { setErr(validationError); return; }
+    if (validationError) {
+      setErr(validationError);
+      return;
+    }
     setBusy(true);
     setErr(null);
     setInfo(null);
@@ -90,7 +92,10 @@ export default function AuthPage() {
     e.preventDefault();
     if (busy) return;
     const validationError = validate("register");
-    if (validationError) { setErr(validationError); return; }
+    if (validationError) {
+      setErr(validationError);
+      return;
+    }
     setBusy(true);
     setErr(null);
     setInfo(null);
@@ -125,10 +130,12 @@ export default function AuthPage() {
       if (resetToken.trim()) {
         if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
           setErr("New password must be 8+ chars with letter + number.");
+          setBusy(false);
           return;
         }
         if (password !== confirmPassword) {
           setErr("Confirm password does not match.");
+          setBusy(false);
           return;
         }
         const res = await resetPassword(email.trim(), resetToken.trim(), password);
@@ -142,9 +149,7 @@ export default function AuthPage() {
       }
       const res = await forgotPassword(email.trim());
       setInfo(
-        res.reset_token
-          ? `Reset token generated. Copy token: ${res.reset_token}`
-          : res.message,
+        res.reset_token ? `Reset token generated. Copy token: ${res.reset_token}` : res.message,
       );
       if (res.reset_token) {
         setResetToken(res.reset_token);
@@ -164,68 +169,30 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 20 }}>
-      <div style={{ maxWidth: 480, width: '100%' }}>
-        {/* Hero statement */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '4px 14px',
-              borderRadius: 20,
-              background: 'rgba(245,158,11,0.1)',
-              border: '1px solid rgba(245,158,11,0.3)',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              color: '#f59e0b',
-              letterSpacing: '0.06em',
-              marginBottom: 16,
-            }}
-          >
-            🇮🇳 AI for Bharat · Explainable Public Procurement
-          </div>
-          <h1
-            style={{
-              margin: '0 0 12px',
-              fontSize: '2.2rem',
-              fontWeight: 900,
-              letterSpacing: '-0.03em',
-              color: 'var(--text)',
-              lineHeight: 1.15,
-            }}
-          >
-            {t("common.appName")}
-          </h1>
-          <p
-            style={{
-              margin: 0,
-              color: 'var(--muted)',
-              fontSize: '0.9rem',
-              lineHeight: 1.6,
-              maxWidth: 380,
-              marginInline: 'auto',
-            }}
-          >
-            Thousands of MSMEs lose tenders they deserve — because the
-            evaluation process is manual, inconsistent, and impossible to audit.
-            <br />
-            <span style={{ color: 'var(--text)', fontWeight: 600 }}>
-              TenderSense AI makes every verdict explainable.
-            </span>
-          </p>
+    <div className="auth-layout">
+      <aside className="auth-hero" aria-hidden="false">
+        <div className="auth-hero__inner">
+          <p className="eyebrow">Sovereign procurement intelligence</p>
+          <h1>{t("common.appName")}</h1>
+          <p className="auth-lead">{t("auth.heroLead")}</p>
+          <ul className="auth-trust">
+            <li>{t("auth.trust1")}</li>
+            <li>{t("auth.trust2")}</li>
+            <li>{t("auth.trust3")}</li>
+          </ul>
         </div>
+      </aside>
 
-        <div className="panel">
-          <h1>{view === "forgot" ? "Reset password" : t("auth.title")}</h1>
-          <p className="muted">
-            {view === "forgot"
-              ? "Request a reset token, then set a new password."
-              : t("auth.subtitle")}
+      <main className="auth-main">
+        <div className="auth-card panel">
+          <h2 className="auth-form-title">
+            {view === "forgot" ? "Reset password" : t("auth.title")}
+          </h2>
+          <p className="muted" style={{ marginTop: 6 }}>
+            {view === "forgot" ? "Request a reset token, then set a new password." : t("auth.subtitle")}
           </p>
           <form
-            style={{ marginTop: 24 }}
+            style={{ marginTop: 22 }}
             onSubmit={(e) => {
               if (view === "forgot") {
                 void onForgotPassword(e);
@@ -274,16 +241,16 @@ export default function AuthPage() {
             )}
             {mode === "register" && (
               <div style={{ fontSize: "0.74rem", color: "var(--muted)", marginTop: 6, lineHeight: 1.6 }}>
-                <div style={{ color: hasMinLen ? "var(--good)" : "var(--muted)" }}>
+                <div style={{ color: hasMinLen ? "var(--ok-fg)" : "var(--muted)" }}>
                   {hasMinLen ? "✓" : "•"} At least 8 characters
                 </div>
-                <div style={{ color: hasLetter ? "var(--good)" : "var(--muted)" }}>
+                <div style={{ color: hasLetter ? "var(--ok-fg)" : "var(--muted)" }}>
                   {hasLetter ? "✓" : "•"} Contains a letter
                 </div>
-                <div style={{ color: hasNumber ? "var(--good)" : "var(--muted)" }}>
+                <div style={{ color: hasNumber ? "var(--ok-fg)" : "var(--muted)" }}>
                   {hasNumber ? "✓" : "•"} Contains a number
                 </div>
-                <div style={{ color: confirmMatches ? "var(--good)" : "var(--bad)" }}>
+                <div style={{ color: confirmMatches ? "var(--ok-fg)" : "var(--bad-fg)" }}>
                   {confirmMatches ? "✓" : "•"} Confirm password matches
                 </div>
               </div>
@@ -326,53 +293,46 @@ export default function AuthPage() {
               </>
             )}
             {err && (
-              <p
-                className="mono"
-                data-testid="auth-error"
-                style={{ color: "var(--bad)", marginTop: 12, fontSize: '0.8rem' }}
-              >
+              <p className="mono auth-error" data-testid="auth-error">
                 {err}
               </p>
             )}
             {info && (
-              <p
-                className="mono"
-                style={{ color: "var(--good)", marginTop: 12, fontSize: "0.8rem" }}
-              >
+              <p className="mono" style={{ color: "var(--ok-fg)", marginTop: 12, fontSize: "0.8rem" }}>
                 {info}
               </p>
             )}
             {view === "auth" && (
               <div className="row" style={{ marginTop: 12, gap: 8 }}>
-              <button
-                type="button"
-                className={mode === "login" ? "primary" : "ghost"}
-                style={{ flex: 1 }}
-                disabled={busy}
-                onClick={() => {
-                  setMode("login");
-                  setErr(null);
-                  setInfo(null);
-                }}
-              >
-                Sign-in mode
-              </button>
-              <button
-                type="button"
-                className={mode === "register" ? "primary" : "ghost"}
-                style={{ flex: 1 }}
-                disabled={busy}
-                onClick={() => {
-                  setMode("register");
-                  setErr(null);
-                  setInfo(null);
-                }}
-              >
-                Register mode
-              </button>
+                <button
+                  type="button"
+                  className={mode === "login" ? "primary" : "ghost"}
+                  style={{ flex: 1 }}
+                  disabled={busy}
+                  onClick={() => {
+                    setMode("login");
+                    setErr(null);
+                    setInfo(null);
+                  }}
+                >
+                  Sign-in mode
+                </button>
+                <button
+                  type="button"
+                  className={mode === "register" ? "primary" : "ghost"}
+                  style={{ flex: 1 }}
+                  disabled={busy}
+                  onClick={() => {
+                    setMode("register");
+                    setErr(null);
+                    setInfo(null);
+                  }}
+                >
+                  Register mode
+                </button>
               </div>
             )}
-            <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
+            <div className="row" style={{ marginTop: 24, flexWrap: "nowrap" }}>
               <button
                 data-testid="auth-login"
                 type="submit"
@@ -386,15 +346,15 @@ export default function AuthPage() {
                       ? "Resetting..."
                       : "Generating token..."
                     : mode === "register"
-                    ? "Registering..."
-                    : "Signing in..."
+                      ? "Registering..."
+                      : "Signing in..."
                   : view === "forgot"
                     ? resetToken
                       ? "Reset Password"
                       : "Generate Reset Token"
-                  : mode === "register"
-                    ? "Create account"
-                    : t("auth.signIn")}
+                    : mode === "register"
+                      ? "Create account"
+                      : t("auth.signIn")}
               </button>
             </div>
             <div className="row" style={{ marginTop: 10 }}>
@@ -424,7 +384,7 @@ export default function AuthPage() {
                 type="button"
                 className="ghost"
                 data-testid="auth-fill-demo"
-                style={{ marginTop: 12, width: "100%", fontSize: "0.8rem" }}
+                style={{ marginTop: 14, width: "100%", fontSize: "0.82rem" }}
                 onClick={fillDemo}
               >
                 {t("auth.fillDemo")}
@@ -432,7 +392,7 @@ export default function AuthPage() {
             )}
           </form>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

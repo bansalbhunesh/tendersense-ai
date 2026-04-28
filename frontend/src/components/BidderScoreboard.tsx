@@ -163,7 +163,7 @@ export default function BidderScoreboard({
                   style={{
                     height: 4,
                     borderRadius: 2,
-                    background: "rgba(255,255,255,0.06)",
+                    background: "var(--progress-track)",
                     overflow: "hidden",
                     marginBottom: 6,
                   }}
@@ -187,9 +187,9 @@ export default function BidderScoreboard({
                     color: "var(--muted)",
                   }}
                 >
-                  <span style={{ color: "#6ee7b7" }}>✓ {s.eligible} eligible</span>
-                  <span style={{ color: "#fca5a5" }}>✗ {s.notEligible} not met</span>
-                  <span style={{ color: "#fcd34d" }}>⚠ {s.needsReview} review</span>
+                  <span style={{ color: "#047857", fontWeight: 600 }}>✓ {s.eligible} eligible</span>
+                  <span style={{ color: "#b91c1c", fontWeight: 600 }}>✗ {s.notEligible} not met</span>
+                  <span style={{ color: "#c2410c", fontWeight: 600 }}>⚠ {s.needsReview} review</span>
                   <span>of {s.total} criteria</span>
                 </div>
               </div>

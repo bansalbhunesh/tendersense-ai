@@ -54,13 +54,13 @@ function StageNode({
   const colors: Record<Status, { dot: string; text: string; border: string; bg: string }> = {
     done: {
       dot: "#10b981",
-      text: "#6ee7b7",
+      text: "#065f46",
       border: "rgba(16,185,129,0.4)",
       bg: "rgba(16,185,129,0.08)",
     },
     active: {
       dot: "#f59e0b",
-      text: "#fcd34d",
+      text: "#9a3412",
       border: "rgba(245,158,11,0.55)",
       bg: "rgba(245,158,11,0.08)",
     },

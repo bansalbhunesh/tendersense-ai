@@ -19,6 +19,10 @@
   "auth": {
     "title": "Officer Access",
     "subtitle": "Secure procurement evaluation system. Authenticate to access tender workspaces and the evaluation pipeline.",
+    "heroLead": "Built for officers who need auditable, explainable decisions — not black-box scores. Upload tender packs, extract criteria, and evaluate bidders with reasoning you can defend.",
+    "trust1": "Population-scale document understanding with OCR tuned for Indian languages.",
+    "trust2": "Every verdict traces to clauses, figures, and evidence — ready for audit.",
+    "trust3": "Human-in-the-loop by design: ambiguous cases never silently disqualify.",
     "departmentEmail": "Department Email",
     "password": "Password",
     "signIn": "Sign in",
