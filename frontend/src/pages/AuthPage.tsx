@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { login, register, token } from "../api";
+import { forgotPassword, login, register, resetPassword, token } from "../api";
 import { useToast } from "../components/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
@@ -9,11 +9,19 @@ export default function AuthPage() {
   useDocumentTitle("auth.documentTitle");
   const { t } = useTranslation();
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [view, setView] = useState<"auth" | "forgot">("auth");
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const demoEmail = import.meta.env.VITE_DEMO_EMAIL;
   const demoPassword = import.meta.env.VITE_DEMO_PASSWORD;
@@ -23,20 +31,49 @@ export default function AuthPage() {
     if (token()) nav("/app");
   }, [nav]);
 
-  function validate(): string | null {
+  useEffect(() => {
+    const viewParam = searchParams.get("view");
+    const modeParam = searchParams.get("mode");
+    const emailParam = searchParams.get("email");
+    const tokenParam = searchParams.get("token");
+    if (viewParam === "forgot") {
+      setView("forgot");
+      if (modeParam === "reset") {
+        if (emailParam) setEmail(emailParam);
+        if (tokenParam) setResetToken(tokenParam);
+      }
+      // Clean URL so tokens are not left in browser history/share.
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  function validate(targetMode: "login" | "register"): string | null {
     if (!email.trim()) return "Email is required.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Enter a valid email address.";
     if (!password) return "Password is required.";
     if (password.length < 8) return "Password must be at least 8 characters.";
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      return "Password must include at least one letter and one number.";
+    }
+    if (targetMode === "register" && password !== confirmPassword) {
+      return "Confirm password does not match.";
+    }
     return null;
   }
 
+  const hasMinLen = password.length >= 8;
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const confirmMatches = mode !== "register" || password === confirmPassword;
+
   async function onLogin(e: FormEvent) {
     e.preventDefault();
-    const validationError = validate();
+    if (busy) return;
+    const validationError = validate("login");
     if (validationError) { setErr(validationError); return; }
     setBusy(true);
     setErr(null);
+    setInfo(null);
     try {
       await login(email.trim(), password);
       nav("/app");
@@ -51,17 +88,71 @@ export default function AuthPage() {
 
   async function onRegister(e: FormEvent) {
     e.preventDefault();
-    const validationError = validate();
+    if (busy) return;
+    const validationError = validate("register");
     if (validationError) { setErr(validationError); return; }
     setBusy(true);
     setErr(null);
+    setInfo(null);
     try {
       await register(email.trim(), password);
+      setInfo("Account created. Redirecting...");
       nav("/app");
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setErr(message);
       toast.error(t("auth.registrationFailed", { message }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onForgotPassword(e: FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    if (!email.trim()) {
+      setErr("Email is required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setErr("Enter a valid email address.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    setInfo(null);
+    try {
+      if (resetToken.trim()) {
+        if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+          setErr("New password must be 8+ chars with letter + number.");
+          return;
+        }
+        if (password !== confirmPassword) {
+          setErr("Confirm password does not match.");
+          return;
+        }
+        const res = await resetPassword(email.trim(), resetToken.trim(), password);
+        setInfo(res.message);
+        setView("auth");
+        setMode("login");
+        setResetToken("");
+        setPassword("");
+        setConfirmPassword("");
+        return;
+      }
+      const res = await forgotPassword(email.trim());
+      setInfo(
+        res.reset_token
+          ? `Reset token generated. Copy token: ${res.reset_token}`
+          : res.message,
+      );
+      if (res.reset_token) {
+        setResetToken(res.reset_token);
+      }
+    } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
+      setErr(message);
+      toast.error(`Password reset failed: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -129,9 +220,26 @@ export default function AuthPage() {
         </div>
 
         <div className="panel">
-          <h1>{t("auth.title")}</h1>
-          <p className="muted">{t("auth.subtitle")}</p>
-          <form style={{ marginTop: 24 }} onSubmit={onLogin}>
+          <h1>{view === "forgot" ? "Reset password" : t("auth.title")}</h1>
+          <p className="muted">
+            {view === "forgot"
+              ? "Request a reset token, then set a new password."
+              : t("auth.subtitle")}
+          </p>
+          <form
+            style={{ marginTop: 24 }}
+            onSubmit={(e) => {
+              if (view === "forgot") {
+                void onForgotPassword(e);
+                return;
+              }
+              if (mode === "register") {
+                void onRegister(e);
+                return;
+              }
+              void onLogin(e);
+            }}
+          >
             <label>{t("auth.departmentEmail")}</label>
             <input
               data-testid="auth-email"
@@ -140,17 +248,85 @@ export default function AuthPage() {
               autoComplete="username"
             />
             <div style={{ height: 16 }} />
-            <label>{t("auth.password")}</label>
-            <input
-              data-testid="auth-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-            <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 4 }}>
-              Minimum 8 characters
-            </p>
+            {(view === "auth" || !!resetToken) && (
+              <>
+                <label>{view === "forgot" && resetToken ? "New Password" : t("auth.password")}</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    data-testid="auth-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setShowPassword((v) => !v)}
+                    style={{ minWidth: 86 }}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 4 }}>
+                  Minimum 8 characters, with letter + number
+                </p>
+              </>
+            )}
+            {mode === "register" && (
+              <div style={{ fontSize: "0.74rem", color: "var(--muted)", marginTop: 6, lineHeight: 1.6 }}>
+                <div style={{ color: hasMinLen ? "var(--good)" : "var(--muted)" }}>
+                  {hasMinLen ? "✓" : "•"} At least 8 characters
+                </div>
+                <div style={{ color: hasLetter ? "var(--good)" : "var(--muted)" }}>
+                  {hasLetter ? "✓" : "•"} Contains a letter
+                </div>
+                <div style={{ color: hasNumber ? "var(--good)" : "var(--muted)" }}>
+                  {hasNumber ? "✓" : "•"} Contains a number
+                </div>
+                <div style={{ color: confirmMatches ? "var(--good)" : "var(--bad)" }}>
+                  {confirmMatches ? "✓" : "•"} Confirm password matches
+                </div>
+              </div>
+            )}
+            {(mode === "register" || (view === "forgot" && !!resetToken)) && (
+              <>
+                <div style={{ height: 14 }} />
+                <label>{view === "forgot" ? "Confirm New Password" : "Confirm Password"}</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    data-testid="auth-confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    style={{ minWidth: 86 }}
+                  >
+                    {showConfirmPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </>
+            )}
+            {view === "forgot" && (
+              <>
+                <div style={{ height: 14 }} />
+                <label>Reset Token</label>
+                <input
+                  data-testid="auth-reset-token"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  placeholder="Paste reset token"
+                  autoComplete="off"
+                />
+              </>
+            )}
             {err && (
               <p
                 className="mono"
@@ -160,14 +336,91 @@ export default function AuthPage() {
                 {err}
               </p>
             )}
-            <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
-              <button data-testid="auth-login" type="submit" className="primary" style={{ flex: 1 }} disabled={busy}>
-                {t("auth.signIn")}
+            {info && (
+              <p
+                className="mono"
+                style={{ color: "var(--good)", marginTop: 12, fontSize: "0.8rem" }}
+              >
+                {info}
+              </p>
+            )}
+            {view === "auth" && (
+              <div className="row" style={{ marginTop: 12, gap: 8 }}>
+              <button
+                type="button"
+                className={mode === "login" ? "primary" : "ghost"}
+                style={{ flex: 1 }}
+                disabled={busy}
+                onClick={() => {
+                  setMode("login");
+                  setErr(null);
+                  setInfo(null);
+                }}
+              >
+                Sign-in mode
               </button>
-              <button data-testid="auth-register" type="button" className="ghost" style={{ flex: 1 }} disabled={busy} onClick={onRegister}>
-                {t("auth.register")}
+              <button
+                type="button"
+                className={mode === "register" ? "primary" : "ghost"}
+                style={{ flex: 1 }}
+                disabled={busy}
+                onClick={() => {
+                  setMode("register");
+                  setErr(null);
+                  setInfo(null);
+                }}
+              >
+                Register mode
+              </button>
+              </div>
+            )}
+            <div className="row" style={{ marginTop: 24, flexWrap: 'nowrap' }}>
+              <button
+                data-testid="auth-login"
+                type="submit"
+                className="primary"
+                style={{ flex: 1 }}
+                disabled={busy}
+              >
+                {busy
+                  ? view === "forgot"
+                    ? resetToken
+                      ? "Resetting..."
+                      : "Generating token..."
+                    : mode === "register"
+                    ? "Registering..."
+                    : "Signing in..."
+                  : view === "forgot"
+                    ? resetToken
+                      ? "Reset Password"
+                      : "Generate Reset Token"
+                  : mode === "register"
+                    ? "Create account"
+                    : t("auth.signIn")}
               </button>
             </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className="ghost"
+                style={{ width: "100%" }}
+                onClick={() => {
+                  setErr(null);
+                  setInfo(null);
+                  setPassword("");
+                  setConfirmPassword("");
+                  setResetToken("");
+                  setView((v) => (v === "auth" ? "forgot" : "auth"));
+                }}
+              >
+                {view === "auth" ? "Forgot password?" : "Back to sign in"}
+              </button>
+            </div>
+            {mode === "register" && (
+              <p style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 10 }}>
+                Create your officer account to start tender evaluation and audit-ready review.
+              </p>
+            )}
             {showDemoButton && (
               <button
                 type="button"

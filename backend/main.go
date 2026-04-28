@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -66,6 +67,7 @@ func main() {
 	// Modern CORS configuration
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = false
+	config.AllowWildcard = true
 	var origins []string
 	for _, o := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
 		if s := strings.TrimSpace(o); s != "" {
@@ -75,6 +77,27 @@ func main() {
 	config.AllowOrigins = origins
 	if len(origins) == 0 {
 		log.Fatal("ALLOWED_ORIGINS must contain at least one non-empty origin (comma-separated)")
+	}
+	// Optional regex-based origin allowlist for dynamic deploy URLs
+	// (e.g. Vercel previews). Keep explicit ALLOWED_ORIGINS as the primary control.
+	originRegex := strings.TrimSpace(os.Getenv("ALLOWED_ORIGIN_REGEX"))
+	if originRegex != "" {
+		re, err := regexp.Compile(originRegex)
+		if err != nil {
+			log.Fatalf("invalid ALLOWED_ORIGIN_REGEX: %v", err)
+		}
+		config.AllowOriginWithContextFunc = func(_ *gin.Context, origin string) bool {
+			if re.MatchString(origin) {
+				return true
+			}
+			origin = strings.TrimSpace(origin)
+			for _, o := range origins {
+				if origin == o {
+					return true
+				}
+			}
+			return false
+		}
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Accept"}
@@ -95,6 +118,8 @@ func main() {
 		{
 			authLimited.POST("/auth/register", handlers.Register(database))
 			authLimited.POST("/auth/login", handlers.Login(database))
+			authLimited.POST("/auth/forgot-password", handlers.ForgotPassword(database))
+			authLimited.POST("/auth/reset-password", handlers.ResetPassword(database))
 		}
 
 		auth := api.Group("")

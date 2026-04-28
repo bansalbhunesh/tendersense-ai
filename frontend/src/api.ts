@@ -131,6 +131,34 @@ export async function register(email: string, password: string) {
   setToken(data.token);
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string; reset_token?: string; expires_at?: string }> {
+  const r = await fetch(API + "/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!r.ok) throw new Error(await readErrorMessage(r));
+  return (await r.json()) as { message: string; reset_token?: string; expires_at?: string };
+}
+
+export async function resetPassword(
+  email: string,
+  resetToken: string,
+  newPassword: string,
+): Promise<{ message: string }> {
+  const r = await fetch(API + "/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      reset_token: resetToken,
+      new_password: newPassword,
+    }),
+  });
+  if (!r.ok) throw new Error(await readErrorMessage(r));
+  return (await r.json()) as { message: string };
+}
+
 export function logout() {
   clearToken();
 }

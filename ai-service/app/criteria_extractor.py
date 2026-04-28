@@ -9,6 +9,8 @@ import re
 import uuid
 from typing import Any
 
+import httpx
+
 from app.translation import detect_language, get_translator, translate_in_chunks
 
 logger = logging.getLogger("tendersense-ai")
@@ -611,18 +613,25 @@ def extract_criteria_llm(text: str) -> list[dict[str, Any]]:
             )
         return _fallback_criteria(text)
 
-    key = os.getenv("ANTHROPIC_API_KEY")
-    if not key:
-        logger.warning("No Anthropic API key found, using fallback heuristics.")
+    client: Any = None
+    if backend == "anthropic":
+        key = os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            logger.warning("No Anthropic API key found, using fallback heuristics.")
+            return _fallback_criteria(text)
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=key)
+        except ImportError:
+            logger.warning("anthropic package not installed, using fallback heuristics.")
+            return _fallback_criteria(text)
+    elif backend == "groq":
+        if not os.getenv("GROQ_API_KEY"):
+            logger.warning("No Groq API key found, using fallback heuristics.")
+            return _fallback_criteria(text)
+    else:
+        logger.warning("Unknown LLM_BACKEND=%s, using fallback heuristics.", backend)
         return _fallback_criteria(text)
-
-    try:
-        import anthropic
-    except ImportError:
-        logger.warning("anthropic package not installed, using fallback heuristics.")
-        return _fallback_criteria(text)
-
-    client = anthropic.Anthropic(api_key=key)
     # limit input to avoid token overflow
     content = text[:150000]
 
@@ -650,13 +659,36 @@ TENDER TEXT:
 {content}
 """
     try:
-        msg = client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=int(os.getenv("CRITERIA_MAX_OUTPUT_TOKENS", "4096")),
-            temperature=0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = msg.content[0].text
+        if backend == "anthropic":
+            msg = client.messages.create(
+                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+                max_tokens=int(os.getenv("CRITERIA_MAX_OUTPUT_TOKENS", "4096")),
+                temperature=0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = msg.content[0].text
+        else:
+            resp = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('GROQ_API_KEY', '')}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=90.0,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            raw = (
+                payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
 
         # Robust JSON search
         match = re.search(r"\{.*\}", raw, re.DOTALL)

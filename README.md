@@ -40,7 +40,7 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 | **Criteria extraction** | LLM-with-schema (Anthropic Claude) when configured; deterministic regex extractor covers ~16 categories: turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting |
 | **Indic language pipeline** | Devanagari ratio language detector → pluggable translator (Bhashini ULCA / passthrough) → existing extractor. Each criterion carries `source_text_lang` and `source_clause_translated` so the audit trail keeps the original Hindi clause |
 | **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 `ELIGIBLE`/`NOT_ELIGIBLE` without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
-| **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
+| **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic\|groq` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
 | **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail, evidence chips, "Copy as JSON"), two-pane review queue with criterion-level overrides, audit log, in-app toasts, **EN ↔ हिं i18next toggle** persisted per officer |
 | **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
 | **Auth** | JWT + bcrypt, rate-limited login/eval, structured error envelope |
@@ -179,11 +179,18 @@ Every PR runs all four jobs in `.github/workflows/ci.yml`.
 | `DATABASE_URL` | Backend | — | Postgres DSN |
 | `JWT_SECRET` | Backend | — | **Required.** ≥ 32 chars (warns below) |
 | `ALLOWED_ORIGINS` | Backend, AI | — | CSV list of allowed CORS origins |
+| `ALLOWED_ORIGIN_REGEX` | Backend | _empty_ | Optional regex allowlist for dynamic preview URLs |
 | `AI_SERVICE_URL` | Backend | `http://localhost:8081` | AI service base URL |
 | `DATA_DIR` | Backend, AI | `data/uploads` | Shared upload root (path-traversal-locked in AI service) |
-| `ANTHROPIC_API_KEY` | AI | _empty_ | Optional. Without it, deterministic engine runs |
+| `RESEND_API_KEY` | Backend | _empty_ | API key for password-reset email delivery |
+| `RESET_EMAIL_FROM` | Backend | _empty_ | Sender identity for password-reset emails |
+| `APP_BASE_URL` | Backend | _empty_ | Public frontend base URL used in reset links |
+| `ALLOW_INSECURE_RESET_TOKEN_RESPONSE` | Backend | `false` | Dev-only: return reset token in API response when email fails |
+| `ANTHROPIC_API_KEY` | AI | _empty_ | Required when `LLM_BACKEND=anthropic`; optional otherwise |
+| `GROQ_API_KEY` | AI | _empty_ | Required when `LLM_BACKEND=groq` |
+| `GROQ_MODEL` | AI | `llama-3.3-70b-versatile` | Groq model override |
 | `ANTHROPIC_MODEL` | AI | `claude-sonnet-4-20250514` | Override the cross-check model |
-| `LLM_BACKEND` | AI | `anthropic` | `anthropic` / `disabled` / `bhashini` — sovereign-mode switch |
+| `LLM_BACKEND` | AI | `anthropic` | `anthropic` / `groq` / `disabled` / `bhashini` — sovereign-mode switch |
 | `TRANSLATION_BACKEND` | AI | `disabled` | `disabled` (passthrough) / `bhashini` (ULCA pipeline) |
 | `BHASHINI_USER_ID`, `BHASHINI_API_KEY`, `BHASHINI_PIPELINE_ID`, `BHASHINI_INFERENCE_URL` | AI | _empty_ | Required when `TRANSLATION_BACKEND=bhashini` |
 | `OCR_LANGS` | AI | `eng` | Tesseract language stack. Set to `eng+hin` to enable Hindi OCR + a Devanagari PaddleOCR pass |

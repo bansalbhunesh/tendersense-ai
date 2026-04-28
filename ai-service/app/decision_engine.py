@@ -13,6 +13,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 logger = logging.getLogger("tendersense-ai")
 
 
@@ -373,9 +375,8 @@ def select_best_evidence(evs: list[Evidence], priority: list[str]) -> Evidence |
     return scored[0][1]
 
 
-def _get_anthropic_client():
-    """Lazy-load the anthropic client. Returns None if not available or if
-    LLM_BACKEND is set to a non-Anthropic value."""
+def _get_llm_client():
+    """Return `(backend, client)` for configured LLM backend, else `(None, None)`."""
     backend = _llm_backend()
     if backend in ("disabled", "bhashini"):
         if backend == "bhashini":
@@ -383,26 +384,44 @@ def _get_anthropic_client():
                 "LLM_BACKEND=bhashini: Bhashini-LLM cross-check is not implemented; "
                 "skipping LLM evaluation."
             )
-        return None
-    key = os.getenv("ANTHROPIC_API_KEY")
-    if not key:
+        return None, None
+    if backend == "anthropic":
+        key = os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            return None, None
+        try:
+            import anthropic
+            return "anthropic", anthropic.Anthropic(api_key=key)
+        except ImportError:
+            return None, None
+    if backend == "groq":
+        key = os.getenv("GROQ_API_KEY")
+        if not key:
+            return None, None
+        return "groq", key
+    return None, None
+
+
+def _extract_json_object(raw: str) -> dict[str, Any] | None:
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
         return None
     try:
-        import anthropic
-        return anthropic.Anthropic(api_key=key)
-    except ImportError:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
         return None
 
 
 def call_llm_eval(criterion: dict[str, Any], bidder_id: str, documents: list[dict[str, Any]]) -> dict[str, Any]:
     """Use Claude to evaluate a criterion when deterministic logic is insufficient."""
-    client = _get_anthropic_client()
-    if client is None:
+    backend, client = _get_llm_client()
+    if client is None or backend is None:
         return {
             "verdict": "NEEDS_REVIEW",
             "reason": "NO_API_KEY",
             "confidence": 0.0,
-            "reasoning": "Anthropic API key missing or anthropic package not installed.",
+            "reasoning": "Configured LLM API key missing or provider client unavailable.",
         }
 
     max_docs = int(os.getenv("LLM_MAX_DOCS", "8"))
@@ -461,16 +480,42 @@ Return ONLY a JSON object:
 }}
 """
     try:
-        msg = client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "2200")),
-            temperature=0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = msg.content[0].text
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
+        if backend == "anthropic":
+            msg = client.messages.create(
+                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+                max_tokens=int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "2200")),
+                temperature=0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = msg.content[0].text
+        elif backend == "groq":
+            resp = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {client}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=90.0,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            raw = (
+                payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+        else:
+            raw = ""
+
+        parsed = _extract_json_object(raw)
+        if parsed is not None:
+            return parsed
         return {"verdict": "NEEDS_REVIEW", "reason": "PARSE_ERROR", "confidence": 0.0,
                 "reasoning": "Could not parse LLM response.", "decision_trace": {"mode": "llm", "fallback": "parse_error"}}
     except Exception as e:
@@ -712,8 +757,8 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
     fb = _doc_presence_fallback(criterion, bidder_id, documents)
     if fb is not None:
         # If LLM is available, use it as augmentation but don't gate on it.
-        client = _get_anthropic_client()
-        if client is not None:
+        backend, client = _get_llm_client()
+        if client is not None and backend is not None:
             try:
                 llm = call_llm_eval(criterion, bidder_id, documents)
                 if isinstance(llm, dict) and llm.get("verdict") in ("ELIGIBLE", "NOT_ELIGIBLE"):
@@ -727,8 +772,8 @@ def evaluate_criterion(criterion: dict[str, Any], bidder_id: str, documents: lis
         return fb
 
     # No deterministic signal at all → LLM if available, else NEEDS_REVIEW.
-    client = _get_anthropic_client()
-    if client is None:
+    backend, client = _get_llm_client()
+    if client is None or backend is None:
         return {
             "criterion_id": crit_id, "bidder_id": bidder_id,
             "verdict": "NEEDS_REVIEW", "reason": "NO_EVIDENCE",

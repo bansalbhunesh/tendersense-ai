@@ -47,6 +47,15 @@ func Migrate(db *sql.DB) error {
 			role TEXT NOT NULL DEFAULT 'officer',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id BIGSERIAL PRIMARY KEY,
+			email TEXT NOT NULL,
+			token TEXT NOT NULL,
+			used BOOLEAN NOT NULL DEFAULT false,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_email ON password_reset_tokens(email);`,
 		`CREATE TABLE IF NOT EXISTS tenders (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			title TEXT NOT NULL,

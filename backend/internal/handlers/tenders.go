@@ -171,7 +171,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Pages   []any   `json:"pages"`
 			Engine  string  `json:"engine"`
 		}
-		if err := util.PostJSON(c.Request.Context(), "/v1/process-document", map[string]string{"path": dest, "document_id": docID}, &ocrRes); err != nil {
+		if err := util.PostDocumentFile(c.Request.Context(), dest, docID, &ocrRes); err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "ocr service unavailable", "detail": err.Error()})
 			return
 		}

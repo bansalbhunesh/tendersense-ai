@@ -3,8 +3,9 @@
 import json
 import logging
 import os
+import tempfile
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -255,6 +256,53 @@ def process_document(req: ProcessDocReq) -> dict:
     except Exception:
         logger.exception("OCR processing failed for %s", req.document_id)
         return {"error": "ocr_failed", "text": "", "quality_score": 0.0}
+
+
+@app.post("/v1/process-document-upload")
+async def process_document_upload(
+    file: UploadFile = File(...),
+    document_id: str = Form(default=""),
+) -> dict:
+    suffix = os.path.splitext(file.filename or "")[1]
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            dir=tempfile.gettempdir(),
+        ) as tmp:
+            chunk = await file.read()
+            tmp.write(chunk)
+            tmp_path = tmp.name
+        req = ProcessDocReq(path=tmp_path, document_id=document_id)
+        try:
+            # Reuse the same OCR path and response shape as the file-path endpoint.
+            r: OCRResult = process_path(tmp_path, req.document_id)
+            pages_out = [
+                {
+                    "page": p.page_no,
+                    "text": p.text,
+                    "mean_confidence": p.mean_confidence,
+                    "boxes": p.boxes,
+                }
+                for p in r.pages
+            ]
+            return {
+                "text": r.text,
+                "quality_score": r.quality_score,
+                "engine": r.engine,
+                "pages": pages_out,
+                "document_id": req.document_id,
+            }
+        except Exception:
+            logger.exception("OCR processing failed for uploaded %s", req.document_id)
+            return {"error": "ocr_failed", "text": "", "quality_score": 0.0}
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 @app.post("/v1/extract-criteria")

@@ -9,8 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -152,6 +155,71 @@ func doPostJSON(ctx context.Context, client *http.Client, path string, body any,
 		if err := json.Unmarshal(data, out); err != nil {
 			return fmt.Errorf("decode response: %w", err)
 		}
+	}
+	return nil
+}
+
+// PostDocumentFile uploads raw file bytes to the AI service for OCR processing.
+// This avoids cross-service shared filesystem assumptions in cloud deploys.
+func PostDocumentFile(ctx context.Context, absolutePath, documentID string, out any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	f, err := os.Open(absolutePath)
+	if err != nil {
+		return fmt.Errorf("open upload file: %w", err)
+	}
+	defer f.Close()
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+
+	part, err := w.CreateFormFile("file", filepath.Base(absolutePath))
+	if err != nil {
+		return fmt.Errorf("create multipart file field: %w", err)
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return fmt.Errorf("copy file into multipart payload: %w", err)
+	}
+	if err := w.WriteField("document_id", documentID); err != nil {
+		return fmt.Errorf("write multipart document_id: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("finalize multipart payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		AIServiceURL()+"/v1/process-document-upload",
+		&body,
+	)
+	if err != nil {
+		return fmt.Errorf("create multipart request: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := aiClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("call ai service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 300 {
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return &HTTPStatusError{StatusCode: resp.StatusCode, Body: string(data)}
+		}
+		return fmt.Errorf("ai service error (status %d): %s", resp.StatusCode, string(data))
+	}
+	if out != nil {
+		if err := json.Unmarshal(data, out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+	}
+	// Surface OCR-level failures as transport errors so handlers return a clear failure.
+	if strings.Contains(string(data), `"error":"ocr_failed"`) {
+		return fmt.Errorf("ai service OCR failed")
 	}
 	return nil
 }
