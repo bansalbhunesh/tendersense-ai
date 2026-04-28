@@ -6,11 +6,18 @@ and reasoning graph construction.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger("tendersense-ai")
+
+
+def _llm_backend() -> str:
+    return (os.getenv("LLM_BACKEND") or "anthropic").strip().lower()
 
 
 def _ocr_full_text(ocr: Any) -> str:
@@ -359,7 +366,16 @@ def select_best_evidence(evs: list[Evidence], priority: list[str]) -> Evidence |
 
 
 def _get_anthropic_client():
-    """Lazy-load the anthropic client. Returns None if not available."""
+    """Lazy-load the anthropic client. Returns None if not available or if
+    LLM_BACKEND is set to a non-Anthropic value."""
+    backend = _llm_backend()
+    if backend in ("disabled", "bhashini"):
+        if backend == "bhashini":
+            logger.warning(
+                "LLM_BACKEND=bhashini: Bhashini-LLM cross-check is not implemented; "
+                "skipping LLM evaluation."
+            )
+        return None
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         return None

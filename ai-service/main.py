@@ -9,9 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.cache import cache_get_json, cache_set_json, stable_hash_key
-from app.criteria_extractor import extract_criteria_llm
+from app.criteria_extractor import extract_criteria as extract_criteria_lang_aware
 from app.decision_engine import run_evaluation
 from app.ocr_pipeline import OCRResult, process_path
+from app.translation import (
+    _devanagari_ratio,
+    detect_language,
+    get_translator,
+    translate_in_chunks,
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -145,6 +151,16 @@ class EvaluateReq(BaseModel):
     bidders: list[dict] = Field(default_factory=list, max_length=_MAX_EVAL_BIDDERS)
 
 
+class DetectLanguageReq(BaseModel):
+    text: str = Field(default="", max_length=_MAX_CRITERIA_CHARS)
+
+
+class TranslateReq(BaseModel):
+    text: str = Field(default="", max_length=_MAX_CRITERIA_CHARS)
+    src: str = Field(default="hi", max_length=8)
+    tgt: str = Field(default="en", max_length=8)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -153,9 +169,22 @@ def health():
     return {"status": "ok", "service": "tendersense-ai"}
 
 
+def _active_llm_backend() -> str:
+    return (os.getenv("LLM_BACKEND") or "anthropic").strip().lower()
+
+
+def _active_translation_backend() -> str:
+    return (os.getenv("TRANSLATION_BACKEND") or "disabled").strip().lower()
+
+
 @app.get("/v1/version")
 def version():
-    return {"version": "0.2.0", "git_sha": os.getenv("GIT_SHA", "")}
+    return {
+        "version": "0.2.0",
+        "git_sha": os.getenv("GIT_SHA", ""),
+        "llm_backend": _active_llm_backend(),
+        "translation_backend": _active_translation_backend(),
+    }
 
 
 @app.post("/v1/process-document")
@@ -240,8 +269,14 @@ def extract_criteria(req: ExtractCriteriaReq) -> dict:
         return cached
 
     try:
-        criteria = extract_criteria_llm(text)
-        out = {"criteria": criteria, "tender_id": req.tender_id}
+        result = extract_criteria_lang_aware(text)
+        criteria = result.get("criteria") or []
+        out: dict = {"criteria": criteria, "tender_id": req.tender_id}
+        # Surface additive language metadata so clients can render bilingual UI.
+        if "source_text_lang" in result:
+            out["source_text_lang"] = result["source_text_lang"]
+        if "extraction_warning" in result:
+            out["extraction_warning"] = result["extraction_warning"]
         cache_set_json(
             cache_key,
             out,
@@ -298,6 +333,46 @@ def evaluate(req: EvaluateReq) -> dict:
     except Exception:
         logger.exception("Evaluation failed for tender %s", req.tender_id)
         raise HTTPException(status_code=500, detail="evaluation engine error")
+
+
+@app.post("/v1/detect-language")
+def detect_language_endpoint(req: DetectLanguageReq) -> dict:
+    text = req.text or ""
+    lang = detect_language(text)
+    ratio = _devanagari_ratio(text)
+    # Confidence is the distance from the decision boundary, clamped [0, 1].
+    if lang == "hi":
+        confidence = min(1.0, (ratio - 0.3) / 0.7 + 0.5) if ratio > 0.3 else 0.5
+    elif lang == "en":
+        confidence = min(1.0, (0.05 - ratio) / 0.05 + 0.5) if ratio < 0.05 else 0.5
+    else:
+        confidence = 0.5
+    return {
+        "lang": lang,
+        "confidence": round(confidence, 3),
+        "devanagari_ratio": round(ratio, 4),
+    }
+
+
+@app.post("/v1/translate")
+def translate_endpoint(req: TranslateReq) -> dict:
+    backend_name = _active_translation_backend()
+    if backend_name == "disabled":
+        raise HTTPException(status_code=503, detail="translation backend disabled")
+    try:
+        translator = get_translator()
+    except Exception as e:
+        logger.warning("translator construction failed: %s", e)
+        raise HTTPException(status_code=503, detail="translation backend unavailable")
+    if getattr(translator, "name", "disabled") == "disabled":
+        # Backend was requested but env was incomplete; factory degraded silently.
+        raise HTTPException(status_code=503, detail="translation backend unconfigured")
+    try:
+        translated = translate_in_chunks(translator, req.text or "", req.src, req.tgt)
+    except Exception as e:
+        logger.exception("translation failed: %s", e)
+        raise HTTPException(status_code=502, detail="translation failed")
+    return {"translated": translated, "backend": getattr(translator, "name", backend_name)}
 
 
 # ---------------------------------------------------------------------------

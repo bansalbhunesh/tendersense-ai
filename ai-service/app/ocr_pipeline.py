@@ -70,19 +70,27 @@ def _preprocess(image: np.ndarray) -> np.ndarray:
     return clahe.apply(gray)
 
 
-def _paddle_ocr_image(path: str) -> tuple[str, float, list[dict[str, Any]]]:
+def _ocr_langs() -> str:
+    """Tesseract language string. Default: ``eng``. For Hindi, set ``eng+hin``."""
+    return os.getenv("OCR_LANGS", "eng")
+
+
+def _paddle_run(path: str, lang_code: str) -> tuple[list[str], list[float], list[dict[str, Any]]]:
+    """Run a single PaddleOCR pass and return (lines, confs, boxes). Empty on failure."""
     try:
         from paddleocr import PaddleOCR  # type: ignore
     except Exception:
-        return "", 0.0, []
-
-    ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-    result = ocr.ocr(path, cls=True)
+        return [], [], []
+    try:
+        ocr = PaddleOCR(use_angle_cls=True, lang=lang_code, show_log=False)
+        result = ocr.ocr(path, cls=True)
+    except Exception:
+        return [], [], []
     lines: list[str] = []
     confs: list[float] = []
     boxes: list[dict[str, Any]] = []
     if not result or result[0] is None:
-        return "", 0.0, []
+        return [], [], []
     for line in result[0]:
         box, (txt, conf) = line[0], line[1]
         lines.append(txt)
@@ -101,6 +109,22 @@ def _paddle_ocr_image(path: str) -> tuple[str, float, list[dict[str, Any]]]:
                 },
             }
         )
+    return lines, confs, boxes
+
+
+def _paddle_ocr_image(path: str) -> tuple[str, float, list[dict[str, Any]]]:
+    """Run PaddleOCR. If OCR_LANGS contains ``hin``, run a second Hindi pass and
+    concat results — PaddleOCR ships separate models per language."""
+    langs = _ocr_langs().lower()
+    primary_lang = "en"
+    lines, confs, boxes = _paddle_run(path, primary_lang)
+    if "hin" in langs:
+        h_lines, h_confs, h_boxes = _paddle_run(path, "hi")
+        lines.extend(h_lines)
+        confs.extend(h_confs)
+        boxes.extend(h_boxes)
+    if not lines:
+        return "", 0.0, []
     text = "\n".join(lines)
     mean_conf = sum(confs) / len(confs) if confs else 0.0
     return text, mean_conf, boxes
@@ -117,7 +141,11 @@ def _tesseract_image(path: str, preprocessed: bool = False) -> tuple[str, float]
     os.close(fd)
     cv2.imwrite(prep_path, gray)
     try:
-        data = pytesseract.image_to_data(Image.open(prep_path), output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(
+            Image.open(prep_path),
+            lang=_ocr_langs(),
+            output_type=pytesseract.Output.DICT,
+        )
     except Exception:
         return "", 0.0
     finally:
