@@ -9,7 +9,13 @@ import re
 import uuid
 from typing import Any
 
+from app.translation import detect_language, get_translator, translate_in_chunks
+
 logger = logging.getLogger("tendersense-ai")
+
+
+def _llm_backend() -> str:
+    return (os.getenv("LLM_BACKEND") or "anthropic").strip().lower()
 
 
 def _new_id() -> str:
@@ -596,6 +602,15 @@ def _placeholder() -> list[dict[str, Any]]:
 
 
 def extract_criteria_llm(text: str) -> list[dict[str, Any]]:
+    backend = _llm_backend()
+    if backend in ("disabled", "bhashini"):
+        if backend == "bhashini":
+            logger.warning(
+                "LLM_BACKEND=bhashini: Bhashini-LLM cross-check is not implemented; "
+                "using deterministic extractor only."
+            )
+        return _fallback_criteria(text)
+
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         logger.warning("No Anthropic API key found, using fallback heuristics.")
@@ -665,3 +680,54 @@ TENDER TEXT:
     except Exception as e:
         logger.exception(f"LLM criteria extraction failed: {str(e)}")
         return _fallback_criteria(text)
+
+
+def extract_criteria(text: str) -> dict[str, Any]:
+    """Bharat-first entry: detect language, optionally translate to English via the
+    configured translator, run extraction, and tag each criterion with the source
+    language and translated clause.
+
+    Returns a dict with keys: ``criteria`` (list), ``source_text_lang`` (str),
+    and optionally ``extraction_warning`` (str) when translation was needed but
+    not available.
+    """
+    lang = detect_language(text or "")
+    out: dict[str, Any] = {"criteria": [], "source_text_lang": lang}
+
+    if lang == "en" or not text:
+        out["criteria"] = extract_criteria_llm(text or "")
+        return out
+
+    # Indic content detected; try to translate before extraction.
+    translator = get_translator()
+    backend_name = getattr(translator, "name", "disabled")
+    translated: str | None = None
+    warning: str | None = None
+
+    if backend_name == "disabled":
+        warning = "untranslated_indic_text"
+    else:
+        try:
+            translated = translate_in_chunks(translator, text, src=lang if lang == "hi" else "hi", tgt="en")
+        except Exception as e:
+            logger.warning("Translator failed, falling back to raw text: %s", e)
+            warning = "untranslated_indic_text"
+
+    extractor_input = translated if translated else text
+    criteria = extract_criteria_llm(extractor_input)
+
+    # Stamp source-language metadata onto each criterion (additive only).
+    for c in criteria:
+        if not isinstance(c, dict):
+            continue
+        c.setdefault("source_text_lang", lang)
+        if translated:
+            # Echo a slice of the translated text so UIs can show the English
+            # version next to the original Hindi clause.
+            existing_clause = str(c.get("source_clause") or "")[:400]
+            c.setdefault("source_clause_translated", existing_clause)
+
+    if warning:
+        out["extraction_warning"] = warning
+    out["criteria"] = criteria
+    return out

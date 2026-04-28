@@ -39,6 +39,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - EVALUATE_CACHE_TTL_SECONDS=${EVALUATE_CACHE_TTL_SECONDS:-900}
+      # Bharat-first: language and sovereign-mode controls
+      - LLM_BACKEND=${LLM_BACKEND:-anthropic}
+      - TRANSLATION_BACKEND=${TRANSLATION_BACKEND:-disabled}
+      - OCR_LANGS=${OCR_LANGS:-eng}
+      - BHASHINI_USER_ID=${BHASHINI_USER_ID:-}
+      - BHASHINI_API_KEY=${BHASHINI_API_KEY:-}
+      - BHASHINI_PIPELINE_ID=${BHASHINI_PIPELINE_ID:-}
+      - BHASHINI_INFERENCE_URL=${BHASHINI_INFERENCE_URL:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
       interval: 10s

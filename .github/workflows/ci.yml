@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install system deps (Tesseract + Hindi traineddata)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hin
       - name: Install deps
         working-directory: ai-service
         run: |
@@ -34,6 +36,7 @@ jobs:
         env:
           DATA_DIR: /tmp/tendersense-ai-tests
           ALLOWED_ORIGINS: "*"
+          OCR_LANGS: eng+hin
         run: |
           mkdir -p "$DATA_DIR"
           pytest -q

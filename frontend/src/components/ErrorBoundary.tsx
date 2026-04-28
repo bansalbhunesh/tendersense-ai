@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import i18n from "../i18n";
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -16,10 +17,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
+      const t = i18n.t.bind(i18n);
       return (
         <div className="shell" style={{ padding: 24 }}>
           <div className="panel">
-            <h2>Something went wrong</h2>
+            <h2>{t("errors.boundaryTitle")}</h2>
             <p className="muted" style={{ marginTop: 8 }}>
               {this.state.error.message}
             </p>
@@ -29,7 +31,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               style={{ marginTop: 16 }}
               onClick={() => window.location.assign("/")}
             >
-              Back to sign in
+              {t("errors.boundaryBack")}
             </button>
           </div>
         </div>

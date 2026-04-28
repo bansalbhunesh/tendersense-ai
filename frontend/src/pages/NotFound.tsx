@@ -1,22 +1,21 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export default function NotFound() {
-  useDocumentTitle("Not found · TenderSense AI");
+  useDocumentTitle("errors.notFoundDocumentTitle");
+  const { t } = useTranslation();
   return (
     <div className="shell" style={{ padding: 24 }}>
       <div className="panel">
-        <h1>404 — page not found</h1>
-        <p className="muted" style={{ marginTop: 8 }}>
-          The route you tried to open does not exist in this build. Use the link
-          below to go back to a known landing page.
-        </p>
+        <h1>{t("errors.notFoundTitle")}</h1>
+        <p className="muted" style={{ marginTop: 8 }}>{t("errors.notFoundCopy")}</p>
         <div className="row" style={{ marginTop: 16 }}>
           <Link to="/">
-            <button className="primary">Back to sign in</button>
+            <button className="primary">{t("errors.backToSignIn")}</button>
           </Link>
           <Link to="/app">
-            <button className="ghost">Officer dashboard</button>
+            <button className="ghost">{t("errors.officerDashboard")}</button>
           </Link>
         </div>
       </div>

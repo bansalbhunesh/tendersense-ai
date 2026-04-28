@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import AppHeader from "../components/AppHeader";
 import { useToast } from "../components/ToastProvider";
@@ -78,7 +79,8 @@ function verdictBadgeClass(v: string): string {
 }
 
 export default function ReviewPage() {
-  useDocumentTitle("Review queue · TenderSense AI");
+  useDocumentTitle("review.documentTitle");
+  const { t } = useTranslation();
   const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
@@ -86,7 +88,7 @@ export default function ReviewPage() {
   const [queueFilter, setQueueFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<string>("ELIGIBLE");
-  const [why, setWhy] = useState("Verified against original CA certificate on file.");
+  const [why, setWhy] = useState(t("review.defaultJustification"));
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -98,7 +100,7 @@ export default function ReviewPage() {
       setAudit(a.entries || []);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      toast.error(`Failed to load review queue: ${message}`);
+      toast.error(t("review.loadFailed", { message }));
     } finally {
       setLoading(false);
     }
@@ -128,11 +130,11 @@ export default function ReviewPage() {
   async function submitOverride(e: FormEvent) {
     e.preventDefault();
     if (!selected) {
-      toast.error("Pick a queue item before recording an override.");
+      toast.error(t("review.pickBeforeOverride"));
       return;
     }
     if (!why.trim()) {
-      toast.error("Justification is required.");
+      toast.error(t("review.justificationRequired"));
       return;
     }
     setSubmitting(true);
@@ -148,7 +150,7 @@ export default function ReviewPage() {
           justification: why,
         }),
       });
-      toast.success("Override recorded — checksum appended to audit log.");
+      toast.success(t("review.overrideRecorded"));
       // Optimistically remove the item from the local queue.
       setItems((prev) => prev.filter((it) => it.id !== selected.id));
       setSelectedId(null);
@@ -161,7 +163,7 @@ export default function ReviewPage() {
       }
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
-      toast.error(`Override failed: ${message}`);
+      toast.error(t("review.overrideFailed", { message }));
     } finally {
       setSubmitting(false);
     }
@@ -173,27 +175,27 @@ export default function ReviewPage() {
         left={
           <>
             <Link to="/app" className="ghost" style={{ textDecoration: "none" }}>
-              ← Dashboard
+              {t("review.backDashboard")}
             </Link>
-            <strong style={{ marginLeft: 12 }}>Human-in-the-loop review</strong>
+            <strong style={{ marginLeft: 12 }}>{t("review.title")}</strong>
           </>
         }
       />
 
       <div className="grid2">
         <div className="panel">
-          <h2>Queue</h2>
+          <h2>{t("review.queue")}</h2>
           <input
-            placeholder="Filter by tender, bidder, criterion"
+            placeholder={t("review.filterPlaceholder")}
             value={queueFilter}
             onChange={(e) => setQueueFilter(e.target.value)}
             data-testid="review-filter"
           />
           <div style={{ height: 10 }} />
-          {loading && <p className="muted">Loading review queue…</p>}
+          {loading && <p className="muted">{t("review.loadingQueue")}</p>}
           {!loading && filteredItems.length === 0 && (
             <p className="muted" data-testid="review-empty">
-              No open review items.
+              {t("review.noOpenItems")}
             </p>
           )}
           <div data-testid="review-queue-list">
@@ -223,19 +225,19 @@ export default function ReviewPage() {
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>
-                    {it.tender_title || `Tender ${it.tender_id.slice(0, 8)}…`}
+                    {it.tender_title || t("review.tenderFallback", { id: it.tender_id.slice(0, 8) })}
                   </div>
                   <div className="muted" style={{ fontSize: "0.85rem" }}>
-                    Bidder: {it.bidder_name || it.bidder_id.slice(0, 8)}
+                    {t("review.bidderLabel", { name: it.bidder_name || it.bidder_id.slice(0, 8) })}
                   </div>
                   <div className="mono" style={{ fontSize: "0.75rem" }}>
-                    criterion {it.criterion_id.slice(0, 12)}…
+                    {t("review.criterionLabel", { id: it.criterion_id.slice(0, 12) })}
                   </div>
                   <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
                     <span className={`badge ${verdictBadgeClass(v)}`}>{v.replace(/_/g, " ")}</span>
                     {conf != null && (
                       <span className="mono muted" style={{ fontSize: "0.7rem" }}>
-                        conf {(conf * 100).toFixed(0)}%
+                        {t("review.confLabel", { percent: (conf * 100).toFixed(0) })}
                       </span>
                     )}
                   </div>
@@ -246,11 +248,11 @@ export default function ReviewPage() {
         </div>
 
         <div className="panel">
-          <h2>Reviewer override</h2>
-          <p className="muted">Every override is hashed and appended immutably for procurement audit.</p>
+          <h2>{t("review.override")}</h2>
+          <p className="muted">{t("review.overrideCopy")}</p>
           {!selected && (
             <p className="muted" data-testid="review-detail-empty" style={{ marginTop: 16 }}>
-              Pick an item from the queue on the left to view criterion text, AI reasoning, and supporting evidence.
+              {t("review.pickItem")}
             </p>
           )}
           {selected && (
@@ -258,38 +260,40 @@ export default function ReviewPage() {
               <div className="panel" style={{ marginBottom: 12 }}>
                 <div className="mono" style={{ marginBottom: 8, fontSize: "0.8rem" }}>
                   {selected.tender_title || selected.tender_id.slice(0, 8)} ·{" "}
-                  {selected.bidder_name || selected.bidder_id.slice(0, 8)} · criterion{" "}
-                  {selected.criterion_id.slice(0, 12)}…
+                  {selected.bidder_name || selected.bidder_id.slice(0, 8)} ·{" "}
+                  {t("review.criterionLabel", { id: selected.criterion_id.slice(0, 12) })}
                 </div>
                 <div style={{ marginBottom: 10 }}>
-                  <strong>Criterion</strong>
+                  <strong>{t("review.criterion")}</strong>
                   <p className="muted" style={{ marginTop: 4 }}>
                     {criterionTitle(selected)}
                   </p>
                 </div>
                 <div className="row" style={{ marginBottom: 10, gap: 8 }}>
                   <span className={`badge ${verdictBadgeClass(aiVerdict(selected.payload))}`}>
-                    AI: {aiVerdict(selected.payload).replace(/_/g, " ")}
+                    {t("review.aiVerdict", { verdict: aiVerdict(selected.payload).replace(/_/g, " ") })}
                   </span>
                   {aiConfidence(selected.payload) != null && (
                     <span className="mono muted" style={{ fontSize: "0.75rem" }}>
-                      confidence {(Number(aiConfidence(selected.payload)) * 100).toFixed(1)}%
+                      {t("review.aiConfidence", {
+                        percent: (Number(aiConfidence(selected.payload)) * 100).toFixed(1),
+                      })}
                     </span>
                   )}
                 </div>
                 {aiReasoning(selected.payload) && (
                   <div style={{ marginBottom: 10 }}>
-                    <strong>AI reasoning</strong>
+                    <strong>{t("review.aiReasoning")}</strong>
                     <p className="muted" style={{ marginTop: 4, fontSize: "0.9rem" }}>
                       {aiReasoning(selected.payload)}
                     </p>
                   </div>
                 )}
                 <div>
-                  <strong>Evidence</strong>
+                  <strong>{t("review.evidence")}</strong>
                   {evidenceList(selected.payload).length === 0 ? (
                     <p className="muted" data-testid="review-evidence-empty" style={{ marginTop: 4, fontSize: "0.9rem" }}>
-                      No evidence snippets attached to this queue item.
+                      {t("review.noEvidence")}
                     </p>
                   ) : (
                     <ul style={{ marginTop: 4, paddingLeft: 18 }}>
@@ -307,7 +311,7 @@ export default function ReviewPage() {
           )}
 
           <form onSubmit={submitOverride}>
-            <label>New verdict</label>
+            <label>{t("review.newVerdict")}</label>
             <select
               data-testid="override-verdict"
               value={verdict}
@@ -321,7 +325,7 @@ export default function ReviewPage() {
               ))}
             </select>
             <div style={{ height: 10 }} />
-            <label>Justification (required)</label>
+            <label>{t("review.justification")}</label>
             <textarea
               data-testid="override-justification"
               rows={4}
@@ -337,7 +341,7 @@ export default function ReviewPage() {
               data-testid="override-submit"
               disabled={!selected || submitting}
             >
-              {submitting ? "Recording…" : "Record override"}
+              {submitting ? t("review.recording") : t("review.recordOverride")}
             </button>
             {selected && (
               <button
@@ -346,7 +350,7 @@ export default function ReviewPage() {
                 style={{ marginLeft: 8 }}
                 onClick={() => setSelectedId(null)}
               >
-                Clear selection
+                {t("review.clearSelection")}
               </button>
             )}
           </form>
@@ -356,13 +360,13 @@ export default function ReviewPage() {
       <div style={{ height: 16 }} />
 
       <div className="panel">
-        <h2>Audit log (recent)</h2>
+        <h2>{t("review.auditLog")}</h2>
         <table className="table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Action</th>
-              <th>Checksum</th>
+              <th>{t("review.auditWhen")}</th>
+              <th>{t("review.auditAction")}</th>
+              <th>{t("review.auditChecksum")}</th>
             </tr>
           </thead>
           <tbody>

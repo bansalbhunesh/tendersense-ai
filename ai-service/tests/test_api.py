@@ -37,7 +37,10 @@ def test_version_endpoint(tmp_data_dir, monkeypatch):
     r = client.get("/v1/version")
     assert r.status_code == 200
     body = r.json()
-    assert body == {"version": "0.2.0", "git_sha": "abc123def"}
+    assert body["version"] == "0.2.0"
+    assert body["git_sha"] == "abc123def"
+    assert "llm_backend" in body
+    assert "translation_backend" in body
 
 
 def test_version_endpoint_no_sha(tmp_data_dir, monkeypatch):
@@ -46,7 +49,23 @@ def test_version_endpoint_no_sha(tmp_data_dir, monkeypatch):
     client = TestClient(main_mod.app)
     r = client.get("/v1/version")
     assert r.status_code == 200
-    assert r.json() == {"version": "0.2.0", "git_sha": ""}
+    body = r.json()
+    assert body["version"] == "0.2.0"
+    assert body["git_sha"] == ""
+    assert "llm_backend" in body
+    assert "translation_backend" in body
+
+
+def test_version_endpoint_includes_active_backends(tmp_data_dir, monkeypatch):
+    monkeypatch.setenv("LLM_BACKEND", "disabled")
+    monkeypatch.setenv("TRANSLATION_BACKEND", "disabled")
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.get("/v1/version")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["llm_backend"] == "disabled"
+    assert body["translation_backend"] == "disabled"
 
 
 def test_process_document_happy_path(tmp_data_dir, monkeypatch, synthetic_pdf):
@@ -263,3 +282,161 @@ def test_evaluate_returns_pass_and_fail(tmp_data_dir, monkeypatch):
     )
     assert pass_turnover["verdict"] == "ELIGIBLE"
     assert pass_turnover["confidence"] >= 0.6
+
+
+# ---------------------------------------------------------------------------
+# Bharat-first additions: detect-language, translate, Hindi extract-criteria.
+# ---------------------------------------------------------------------------
+
+def _set_bhashini_env(monkeypatch):
+    monkeypatch.setenv("BHASHINI_USER_ID", "test-user")
+    monkeypatch.setenv("BHASHINI_API_KEY", "test-key")
+    monkeypatch.setenv("BHASHINI_PIPELINE_ID", "test-pipeline")
+    monkeypatch.setenv("BHASHINI_INFERENCE_URL", "https://example.invalid/infer")
+
+
+def _clear_translator_cache():
+    from app.translation import get_translator as _gt
+    _gt.cache_clear()
+
+
+def test_detect_language_endpoint_english(tmp_data_dir, monkeypatch):
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post(
+        "/v1/detect-language",
+        json={"text": "Bidder shall have annual turnover of Rs. 5 Crore."},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["lang"] == "en"
+    assert "confidence" in body
+    assert body["devanagari_ratio"] == 0.0
+
+
+def test_detect_language_endpoint_hindi(tmp_data_dir, monkeypatch):
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post(
+        "/v1/detect-language",
+        json={"text": "बोलीदाता का वार्षिक कारोबार पाँच करोड़ रुपये होना चाहिए।"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["lang"] == "hi"
+    assert body["devanagari_ratio"] > 0.5
+
+
+def test_translate_endpoint_disabled_returns_503(tmp_data_dir, monkeypatch):
+    monkeypatch.setenv("TRANSLATION_BACKEND", "disabled")
+    _clear_translator_cache()
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post(
+        "/v1/translate",
+        json={"text": "नमस्ते", "src": "hi", "tgt": "en"},
+    )
+    assert r.status_code == 503
+
+
+def test_translate_endpoint_unconfigured_returns_503(tmp_data_dir, monkeypatch):
+    """Backend=bhashini but envs missing → factory degrades to disabled → 503."""
+    monkeypatch.setenv("TRANSLATION_BACKEND", "bhashini")
+    for k in ("BHASHINI_USER_ID", "BHASHINI_API_KEY", "BHASHINI_PIPELINE_ID", "BHASHINI_INFERENCE_URL"):
+        monkeypatch.delenv(k, raising=False)
+    _clear_translator_cache()
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post("/v1/translate", json={"text": "नमस्ते", "src": "hi", "tgt": "en"})
+    assert r.status_code == 503
+
+
+def _install_bhashini_stub(monkeypatch, target_payload):
+    """Patch BhashiniTranslator.translate directly so we don't fight TestClient's
+    own use of httpx. Returns target_payload regardless of input."""
+    from app import translation as _t
+
+    def fake_translate(self, text: str, src: str, tgt: str) -> str:
+        if not text:
+            return text
+        return target_payload
+
+    monkeypatch.setattr(_t.BhashiniTranslator, "translate", fake_translate)
+
+
+def test_translate_endpoint_bhashini_happy_path(tmp_data_dir, monkeypatch):
+    _set_bhashini_env(monkeypatch)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "bhashini")
+    _clear_translator_cache()
+    _install_bhashini_stub(monkeypatch, "Hello")
+
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post("/v1/translate", json={"text": "नमस्ते", "src": "hi", "tgt": "en"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["translated"] == "Hello"
+    assert body["backend"] == "bhashini"
+
+
+def test_extract_criteria_hindi_with_bhashini_translation(tmp_data_dir, monkeypatch):
+    """Hindi tender text + Bhashini translator → English extraction with
+    source_text_lang=hi tagged on each criterion."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _set_bhashini_env(monkeypatch)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "bhashini")
+    _clear_translator_cache()
+
+    hindi_text = (
+        "निविदा: उपकरण की आपूर्ति।\n"
+        "पात्रता मानदंड:\n"
+        "बोलीदाता का वार्षिक कारोबार पाँच करोड़ रुपये होना चाहिए।\n"
+        "वैध जीएसटी पंजीकरण अनिवार्य है।\n"
+    )
+
+    english_translation = (
+        "Tender: Supply of equipment.\n"
+        "Eligibility criteria:\n"
+        "Bidder must have annual turnover of Rs. 5 Crore.\n"
+        "Valid GST registration is mandatory.\n"
+    )
+
+    _install_bhashini_stub(monkeypatch, english_translation)
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post(
+        "/v1/extract-criteria",
+        json={"text": hindi_text, "tender_id": "T-hi"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("source_text_lang") == "hi"
+    crits = body.get("criteria") or []
+    assert crits, "expected at least one criterion from translated text"
+    fields = {c.get("field") for c in crits}
+    assert "annual_turnover" in fields or "gst_registration" in fields
+    # Each criterion should be stamped with source_text_lang.
+    for c in crits:
+        assert c.get("source_text_lang") == "hi"
+
+
+def test_extract_criteria_hindi_disabled_translator_warns(tmp_data_dir, monkeypatch):
+    """Hindi text + TRANSLATION_BACKEND=disabled → still extracts on raw text but
+    flags ``extraction_warning=untranslated_indic_text``."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("TRANSLATION_BACKEND", "disabled")
+    _clear_translator_cache()
+
+    hindi_text = "बोलीदाता का वार्षिक कारोबार पाँच करोड़ रुपये होना चाहिए।"
+    main_mod = _fresh_app(monkeypatch, tmp_data_dir)
+    client = TestClient(main_mod.app)
+    r = client.post(
+        "/v1/extract-criteria",
+        json={"text": hindi_text, "tender_id": "T-hi-disabled"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("source_text_lang") == "hi"
+    assert body.get("extraction_warning") == "untranslated_indic_text"
+    # Criteria should still be a list — degradation shouldn't crash.
+    assert isinstance(body.get("criteria"), list)

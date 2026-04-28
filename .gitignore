@@ -27,6 +27,8 @@ ai-service/**/__pycache__/
 # Demo venv
 demo/.venv/
 demo/__pycache__/
+# Demo font cache (Devanagari TTF downloaded lazily by generate_demo_pdfs.py)
+demo/.fonts/
 
 # Uploads & local data
 backend/data/
