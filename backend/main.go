@@ -20,9 +20,14 @@ import (
 	"github.com/tendersense/backend/internal/middleware"
 	"github.com/tendersense/backend/internal/repository"
 	"github.com/tendersense/backend/internal/service"
+	"github.com/tendersense/backend/internal/util/pii"
 )
 
 func main() {
+	// Route the stdlib log writer through a PII-redacting filter before
+	// anything else logs (env loader uses log.Println on a missing .env).
+	log.SetOutput(pii.NewWriter(os.Stderr))
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using platform environment variables")
 	}
@@ -46,6 +51,11 @@ func main() {
 	if err := db.RecoverInterruptedJobs(database); err != nil {
 		log.Printf("warning: failed to recover interrupted evaluation jobs: %v", err)
 	}
+
+	// Gin writes its access + recovery logs to gin.DefaultWriter /
+	// gin.DefaultErrorWriter; redact both before they hit stdout/stderr.
+	gin.DefaultWriter = pii.NewWriter(os.Stdout)
+	gin.DefaultErrorWriter = pii.NewWriter(os.Stderr)
 
 	r := gin.New()
 	r.Use(middleware.RequestObservability())

@@ -3,7 +3,7 @@
 > Explainable, auditable AI for **government tender evaluation** — built for Indian procurement realities (CRPF reference deployment).
 
 [![CI](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/bansalbhunesh/tendersense-ai/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-149%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-189%20passing-brightgreen)
 ![go](https://img.shields.io/badge/backend-Go%201.22-00ADD8)
 ![python](https://img.shields.io/badge/ai--service-FastAPI%20%7C%20Python%203.12-3776AB)
 ![web](https://img.shields.io/badge/frontend-Vite%20%7C%20React%2018%20%7C%20TS%20strict-646CFF)
@@ -144,8 +144,8 @@ This measures the rule-engine + JSON serialisation hot path. End-to-end tender i
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend unit + handler | `cd backend && go test ./...` | **44 pass** |
-| AI service (incl. translation, language detect, Hindi extraction) | `cd ai-service && pytest -q` | **67 pass / 1 skip** (Tesseract-only path) |
+| Backend unit + handler (incl. PII redactor) | `cd backend && go test ./...` | **61 pass** |
+| AI service (incl. translation, language detect, Hindi extraction, PII redactor) | `cd ai-service && pytest -q` | **90 pass / 1 skip** (Tesseract-only path) |
 | Frontend unit (incl. i18n + reasoning graph) | `cd frontend && npm test` | **38 pass** |
 | Playwright e2e (register → tender → eval) | `cd frontend && npm run test:e2e` | 1 smoke |
 
@@ -266,6 +266,7 @@ cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && py
 - `ALLOWED_ORIGINS` enforced — wildcard CORS will not start the backend.
 - bcrypt for passwords; structured error envelope avoids leaking internals.
 - No demo credentials in source — only via `VITE_DEMO_*` in dev.
+- **PII redaction at the log + audit boundary** — PAN / Aadhaar (Verhoeff-validated) / GSTIN are masked before any log emission and before `audit_log.payload` is persisted. Implemented symmetrically in both services (`backend/internal/util/pii/`, `ai-service/app/pii.py`) so the seam is the same regardless of which service emitted the record.
 
 ---
 
@@ -276,6 +277,7 @@ cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && py
 - 🇮🇳 **Indic tender ingest** — Devanagari OCR (`eng+hin`), Bhashini-pluggable translator, EN/हिं officer UI. See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md).
 - 🛡️ **Sovereign mode** — `LLM_BACKEND=disabled` runs the deterministic engine with zero foreign-cloud calls.
 - 📊 **Throughput harness** — `demo/benchmark.py` measures p50/p95/p99 against `/v1/evaluate`.
+- 🧾 **PII redaction** — deterministic PAN / Aadhaar / GSTIN masking applied to every log emission and the `audit_log.payload` JSON, in both Go and Python services. Aadhaar matches are gated on the Verhoeff checksum to avoid redacting unrelated 12-digit numbers (turnover figures, transaction refs). Operational data paths (`decisions`, `documents.ocr_payload`) keep originals so officers still see evidence chips.
 
 **Production-readiness gaps that still matter for an actual government deployment:**
 
@@ -285,7 +287,6 @@ cd demo && pip install -r requirements.txt && python generate_demo_pdfs.py && py
 - 📦 **Object storage** — S3/MinIO with presigned URLs; uploads currently sit on a shared volume.
 - 📊 **Metrics + tracing** — Prometheus + OpenTelemetry; logs only today.
 - 📱 **Mobile-friendly UI** — field officers need it; current layout assumes desktop.
-- 🧾 **PII redaction** — deterministic PAN / Aadhaar / GSTIN redaction before logging.
 - 🔌 **GeM / CPPP connector** — direct tender ingest from gem.gov.in once empanelment is in place.
 
 ---

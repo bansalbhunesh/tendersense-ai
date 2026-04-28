@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tendersense/backend/internal/util"
+	"github.com/tendersense/backend/internal/util/pii"
 )
 
 var allowedOverrideVerdicts = map[string]struct{}{
@@ -143,7 +144,10 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 			"new_verdict": nv, "justification": req.Justification,
 		}
 		ab, _ := json.Marshal(audit)
-		ch := util.ChecksumJSON(audit)
+		// Officer-typed justification text is the highest-risk leak surface
+		// in the audit log — strip PAN/Aadhaar/GSTIN before persistence.
+		ab = pii.RedactJSON(ab)
+		ch := util.ChecksumJSON(json.RawMessage(ab))
 		if _, err := tx.ExecContext(c.Request.Context(),
 			`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
 			req.TenderID, uid, "reviewer.override", string(ab), ch); err != nil {

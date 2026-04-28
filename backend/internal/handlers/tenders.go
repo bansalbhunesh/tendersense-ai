@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tendersense/backend/internal/util"
+	"github.com/tendersense/backend/internal/util/pii"
 )
 
 type tenderCreate struct {
@@ -222,8 +223,13 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
+// WriteAudit serialises the payload to JSON, redacts PAN/Aadhaar/GSTIN
+// occurrences in any string-valued node, and writes the row + checksum.
+// The checksum is computed over the redacted bytes so audit verification
+// stays internally consistent without leaking the raw identifier.
 func WriteAudit(db *sql.DB, userID, tenderID, action string, payload map[string]any) {
 	b, _ := json.Marshal(payload)
+	b = pii.RedactJSON(b)
 	sum := util.ChecksumJSON(map[string]any{"action": action, "payload": json.RawMessage(b)})
 	db.Exec(`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
 		nullUUID(tenderID), nullUUID(userID), action, string(b), sum)
