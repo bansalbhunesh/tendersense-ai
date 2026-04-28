@@ -1,19 +1,19 @@
 :root {
-  --bg: #030712;
-  --panel: rgba(17, 24, 39, 0.7);
-  --border: rgba(31, 41, 55, 0.6);
-  --border-highlight: rgba(255, 255, 255, 0.1);
-  --text: #f9fafb;
-  --muted: #9ca3af;
-  --saffron: #f59e0b;
-  --saffron-glow: rgba(245, 158, 11, 0.4);
+  --bg: oklch(0.17 0.015 255);
+  --panel: oklch(0.24 0.012 255 / 0.88);
+  --border: oklch(0.34 0.012 255 / 0.7);
+  --border-highlight: oklch(0.9 0 0 / 0.08);
+  --text: oklch(0.96 0.01 255);
+  --muted: oklch(0.72 0.02 255);
+  --saffron: oklch(0.78 0.14 72);
+  --saffron-glow: oklch(0.78 0.14 72 / 0.25);
   --ok: #10b981;
   --warn: #f59e0b;
   --bad: #ef4444;
   --review: #3b82f6;
-  --radius: 16px;
-  --font: "Inter", "Outfit", system-ui, sans-serif;
-  --glass: blur(12px);
+  --radius: 14px;
+  --font: "Segoe UI Variable", "SF Pro Text", "Aptos", system-ui, sans-serif;
+  --glass: blur(8px);
 }
 
 * {
@@ -24,10 +24,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: 
-    radial-gradient(circle at 0% 0%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
-    radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
-    var(--bg);
+  background: radial-gradient(circle at 10% -10%, oklch(0.3 0.03 72 / 0.24), transparent 45%), var(--bg);
   color: var(--text);
   font-family: var(--font);
   line-height: 1.5;
@@ -66,9 +63,7 @@ a:hover {
   font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #fff, var(--muted));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text);
 }
 
 .panel {
@@ -78,8 +73,8 @@ a:hover {
   border-top: 1px solid var(--border-highlight);
   border-radius: var(--radius);
   padding: 24px;
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4);
-  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.65);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .panel:hover {
@@ -166,19 +161,18 @@ button {
 
 button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
 }
 
 button.primary {
-  background: linear-gradient(135deg, #fbbf24, #d97706);
-  border: none;
-  color: #000;
-  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+  background: var(--saffron);
+  border-color: transparent;
+  color: oklch(0.2 0.01 70);
+  box-shadow: 0 8px 20px -12px oklch(0.72 0.14 72 / 0.85);
 }
 
 button.primary:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(217, 119, 6, 0.4);
-  filter: brightness(1.1);
+  box-shadow: 0 10px 24px -12px oklch(0.72 0.14 72 / 0.9);
+  filter: brightness(1.03);
 }
 
 button.ghost {

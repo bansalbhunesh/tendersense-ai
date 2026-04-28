@@ -8,6 +8,8 @@ import { ToastProvider } from "../components/ToastProvider";
 vi.mock("../api", () => ({
   login: vi.fn(),
   register: vi.fn(),
+  forgotPassword: vi.fn(),
+  resetPassword: vi.fn(),
   token: vi.fn(() => null),
 }));
 
@@ -55,16 +57,18 @@ describe("AuthPage", () => {
     expect(api.register).not.toHaveBeenCalled();
   });
 
-  it("calls register when register button clicked", async () => {
+  it("calls register in register mode", async () => {
     (api.register as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const user = userEvent.setup();
     renderPage();
 
+    await user.click(screen.getByText("Register mode"));
     await user.type(screen.getByTestId("auth-email"), "new@example.com");
-    await user.type(screen.getByTestId("auth-password"), "freshpass");
-    await user.click(screen.getByTestId("auth-register"));
+    await user.type(screen.getByTestId("auth-password"), "freshpass1");
+    await user.type(screen.getByTestId("auth-confirm-password"), "freshpass1");
+    await user.click(screen.getByTestId("auth-login"));
 
-    expect(api.register).toHaveBeenCalledWith("new@example.com", "freshpass");
+    expect(api.register).toHaveBeenCalledWith("new@example.com", "freshpass1");
     expect(api.login).not.toHaveBeenCalled();
   });
 
@@ -74,7 +78,7 @@ describe("AuthPage", () => {
     renderPage();
 
     await user.type(screen.getByTestId("auth-email"), "x@y.z");
-    await user.type(screen.getByTestId("auth-password"), "abc");
+    await user.type(screen.getByTestId("auth-password"), "abc12345");
     await user.click(screen.getByTestId("auth-login"));
 
     const err = await screen.findByTestId("auth-error");

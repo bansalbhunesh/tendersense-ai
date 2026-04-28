@@ -192,9 +192,7 @@ export default function AuthPage() {
               fontSize: '2.2rem',
               fontWeight: 900,
               letterSpacing: '-0.03em',
-              background: 'linear-gradient(135deg, #fff 30%, #9ca3af)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
+              color: 'var(--text)',
               lineHeight: 1.15,
             }}
           >

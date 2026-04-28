@@ -111,9 +111,7 @@ export default function Dashboard() {
                 fontSize: "1.8rem",
                 fontWeight: 900,
                 letterSpacing: "-0.02em",
-                background: "linear-gradient(135deg, #f59e0b, #fbbf24)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
+                color: "var(--saffron)",
                 marginBottom: 4,
               }}
             >
