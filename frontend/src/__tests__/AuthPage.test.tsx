@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AuthPage from "../pages/AuthPage";
-import { ToastProvider } from "../components/ToastProvider";
+import { ToastProvider } from "../components/shell/ToastProvider";
 
 vi.mock("../api", () => ({
   login: vi.fn(),

@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n, { LANG_STORAGE_KEY } from "../i18n";
-import AppHeader from "../components/AppHeader";
-import { ToastProvider } from "../components/ToastProvider";
+import AppHeader from "../components/shell/AppHeader";
+import { ToastProvider } from "../components/shell/ToastProvider";
 
 vi.mock("../api", () => ({
   logout: vi.fn(),

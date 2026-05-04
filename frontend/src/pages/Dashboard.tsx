@@ -2,8 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta } from "../api";
-import AppHeader from "../components/AppHeader";
-import { useToast } from "../components/ToastProvider";
+import AppHeader from "../components/shell/AppHeader";
+import { useToast } from "../components/shell/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type TenderRow = { id: string; title: string; status: string; created_at: string };
@@ -93,10 +93,8 @@ export default function Dashboard() {
           </>
         }
         actions={
-          <Link to="/review">
-            <button type="button" className="ghost">
-              {t("common.reviewQueueButton")}
-            </button>
+          <Link to="/review" className="link-button link-button--ghost">
+            {t("common.reviewQueueButton")}
           </Link>
         }
       />
@@ -118,11 +116,22 @@ export default function Dashboard() {
             {t("dashboard.pipelineCopy")}
           </p>
           <form style={{ marginTop: 18 }} onSubmit={create}>
-            <label>{t("dashboard.title")}</label>
-            <input data-testid="tender-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <label htmlFor="tender-field-title">{t("dashboard.title")}</label>
+            <input
+              id="tender-field-title"
+              data-testid="tender-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
             <div style={{ height: 10 }} />
-            <label>{t("dashboard.description")}</label>
-            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label htmlFor="tender-field-description">{t("dashboard.description")}</label>
+            <textarea
+              id="tender-field-description"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
             <div style={{ height: 14 }} />
             <button data-testid="tender-create" className="primary" type="submit">
               {t("dashboard.createTender")}
@@ -192,10 +201,8 @@ export default function Dashboard() {
                       <span className={`badge ${r.status === "open" ? "ok" : "review"}`}>{r.status}</span>
                     </td>
                     <td>
-                      <Link to={`/tender/${r.id}`}>
-                        <button type="button" className="ghost" style={{ padding: "6px 14px", fontSize: "0.85rem" }}>
-                          {t("dashboard.openWorkspace")}
-                        </button>
+                      <Link to={`/tender/${r.id}`} className="link-button link-button--ghost link-button--compact">
+                        {t("dashboard.openWorkspace")}
                       </Link>
                     </td>
                   </tr>

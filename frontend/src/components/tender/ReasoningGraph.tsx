@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useToast } from "./ToastProvider";
+import { useToast } from "../shell/ToastProvider";
 
 type EvidenceSnippet = {
   document?: string;

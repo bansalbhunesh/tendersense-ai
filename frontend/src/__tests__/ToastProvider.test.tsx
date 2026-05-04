@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ToastProvider, useToast } from "../components/ToastProvider";
+import { ToastProvider, useToast } from "../components/shell/ToastProvider";
 
 // Smuggle the toast api out of the provider so tests can drive it
 // directly without battling userEvent + fake-timer interactions.

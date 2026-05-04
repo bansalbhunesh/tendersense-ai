@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ConflictSnapshot = {
   document: string;
@@ -65,11 +65,13 @@ function AnimatedBar({ targetPct }: { targetPct: number }) {
       >
         <div
           style={{
-            width: `${pct}%`,
             height: "100%",
+            width: "100%",
+            transformOrigin: "left center",
+            transform: `scaleX(${pct / 100})`,
             background: color,
             borderRadius: 5,
-            transition: "width 1.4s cubic-bezier(0.4,0,0.2,1), background 0.6s ease",
+            transition: "transform 1.4s cubic-bezier(0.4,0,0.2,1), background 0.6s ease",
           }}
         />
         {/* 70% threshold marker */}
@@ -267,6 +269,14 @@ function DocumentDiff({
 
 // ── main modal ───────────────────────────────────────────────────────────────
 
+function focusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+    ),
+  );
+}
+
 export default function ContradictionModal({
   data,
   onViewAnalysis,
@@ -277,11 +287,59 @@ export default function ContradictionModal({
   onDismiss: () => void;
 }) {
   const [visible, setVisible] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const primaryBtnRef = useRef<HTMLButtonElement>(null);
+  const prevFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    prevFocus.current = document.activeElement as HTMLElement | null;
+    return () => {
+      prevFocus.current?.focus?.();
+    };
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 40);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    const id = window.setTimeout(() => primaryBtnRef.current?.focus(), 60);
+    return () => clearTimeout(id);
+  }, [visible]);
+
+  const onEscape = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onDismiss();
+      }
+    },
+    [onDismiss],
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [onEscape]);
+
+  const onDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const list = focusableElements(panelRef.current);
+    if (list.length === 0) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const fieldLabel = data.field
     .replace(/_/g, " ")
@@ -297,6 +355,7 @@ export default function ContradictionModal({
 
   return (
     <div
+      role="presentation"
       onClick={onDismiss}
       style={{
         position: "fixed",
@@ -313,7 +372,13 @@ export default function ContradictionModal({
       }}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contradiction-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
         style={{
           maxWidth: 540,
           width: "100%",
@@ -321,6 +386,7 @@ export default function ContradictionModal({
           border: "1px solid rgba(239,68,68,0.5)",
           borderRadius: 20,
           overflow: "hidden",
+          outline: "none",
           transform: visible
             ? "translateY(0) scale(1)"
             : "translateY(28px) scale(0.96)",
@@ -359,6 +425,7 @@ export default function ContradictionModal({
           </div>
           <div style={{ flex: 1 }}>
             <div
+              id="contradiction-modal-title"
               style={{
                 fontWeight: 900,
                 fontSize: "1rem",
@@ -524,13 +591,15 @@ export default function ContradictionModal({
           {/* CTA */}
           <div style={{ display: "flex", gap: 10 }}>
             <button
+              ref={primaryBtnRef}
+              type="button"
               className="primary"
               style={{ flex: 1, fontSize: "0.88rem" }}
               onClick={onViewAnalysis}
             >
               View Full Analysis →
             </button>
-            <button className="ghost" onClick={onDismiss} style={{ flexShrink: 0 }}>
+            <button type="button" className="ghost" onClick={onDismiss} style={{ flexShrink: 0 }}>
               Dismiss
             </button>
           </div>

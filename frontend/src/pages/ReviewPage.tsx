@@ -2,9 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
-import AppHeader from "../components/AppHeader";
-import AuditTimeline from "../components/AuditTimeline";
-import { useToast } from "../components/ToastProvider";
+import AppHeader from "../components/shell/AppHeader";
+import AuditTimeline from "../components/review/AuditTimeline";
+import { useToast } from "../components/shell/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type EvidenceSnippet = {
@@ -159,8 +159,10 @@ export default function ReviewPage() {
       try {
         const a = (await apiFetch("/audit")) as { entries: AuditEntry[] };
         setAudit(a.entries || []);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("[ReviewPage] audit refresh after override failed:", err);
+        }
       }
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);

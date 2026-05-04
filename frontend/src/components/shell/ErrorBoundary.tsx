@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import i18n from "../i18n";
+import i18n from "../../i18n";
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };

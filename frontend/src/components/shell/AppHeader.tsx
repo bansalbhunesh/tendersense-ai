@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { logout, token } from "../api";
+import { logout, token } from "../../api";
 
 type Props = {
   left?: ReactNode;
@@ -18,7 +18,11 @@ function decodeJwtEmail(): string | null {
       atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
     ) as { email?: string; sub?: string };
     return payload.email || payload.sub || null;
-  } catch {
+  } catch (err) {
+    /* Malformed or non-JWT tokens often throw SyntaxError from JSON.parse — expected, stay quiet. */
+    if (import.meta.env.DEV && !(err instanceof SyntaxError)) {
+      console.warn("[AppHeader] JWT payload decode failed:", err);
+    }
     return null;
   }
 }

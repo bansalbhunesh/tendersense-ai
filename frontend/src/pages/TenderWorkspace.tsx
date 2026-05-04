@@ -2,15 +2,15 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
-import AppHeader from "../components/AppHeader";
-import BidderScoreboard from "../components/BidderScoreboard";
-import ContradictionAlert from "../components/ContradictionAlert";
-import ContradictionModal, { type ConflictData } from "../components/ContradictionModal";
-import DecisionCard from "../components/DecisionCard";
-import EvaluationPipeline from "../components/EvaluationPipeline";
-import ReasoningGraph from "../components/ReasoningGraph";
-import RiskScorePanel from "../components/RiskScorePanel";
-import { useToast } from "../components/ToastProvider";
+import AppHeader from "../components/shell/AppHeader";
+import BidderScoreboard from "../components/tender/BidderScoreboard";
+import ContradictionAlert from "../components/review/ContradictionAlert";
+import ContradictionModal, { type ConflictData } from "../components/review/ContradictionModal";
+import DecisionCard from "../components/review/DecisionCard";
+import EvaluationPipeline from "../components/tender/EvaluationPipeline";
+import ReasoningGraph from "../components/tender/ReasoningGraph";
+import RiskScorePanel from "../components/tender/RiskScorePanel";
+import { useToast } from "../components/shell/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type Decision = Record<string, unknown> & {

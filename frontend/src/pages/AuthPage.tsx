@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { forgotPassword, login, register, resetPassword, token } from "../api";
-import { useToast } from "../components/ToastProvider";
+import { useToast } from "../components/shell/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export default function AuthPage() {
@@ -148,9 +148,13 @@ export default function AuthPage() {
         return;
       }
       const res = await forgotPassword(email.trim());
-      setInfo(
-        res.reset_token ? `Reset token generated. Copy token: ${res.reset_token}` : res.message,
-      );
+      if (res.reset_token && import.meta.env.DEV) {
+        setInfo(`Reset token generated. Copy token: ${res.reset_token}`);
+      } else if (res.reset_token) {
+        setInfo(res.message ?? "If an account exists for this email, reset instructions have been sent.");
+      } else {
+        setInfo(res.message);
+      }
       if (res.reset_token) {
         setResetToken(res.reset_token);
       }
@@ -170,7 +174,7 @@ export default function AuthPage() {
 
   return (
     <div className="auth-layout">
-      <aside className="auth-hero" aria-hidden="false">
+      <aside className="auth-hero">
         <div className="auth-hero__inner">
           <p className="eyebrow">Sovereign procurement intelligence</p>
           <h1>{t("common.appName")}</h1>
@@ -205,8 +209,9 @@ export default function AuthPage() {
               void onLogin(e);
             }}
           >
-            <label>{t("auth.departmentEmail")}</label>
+            <label htmlFor="auth-field-email">{t("auth.departmentEmail")}</label>
             <input
+              id="auth-field-email"
               data-testid="auth-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -215,9 +220,12 @@ export default function AuthPage() {
             <div style={{ height: 16 }} />
             {(view === "auth" || !!resetToken) && (
               <>
-                <label>{view === "forgot" && resetToken ? "New Password" : t("auth.password")}</label>
+                <label htmlFor="auth-field-password">
+                  {view === "forgot" && resetToken ? "New Password" : t("auth.password")}
+                </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
+                    id="auth-field-password"
                     data-testid="auth-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
@@ -228,6 +236,8 @@ export default function AuthPage() {
                   <button
                     type="button"
                     className="ghost"
+                    aria-expanded={showPassword}
+                    aria-controls="auth-field-password"
                     onClick={() => setShowPassword((v) => !v)}
                     style={{ minWidth: 86 }}
                   >
@@ -258,9 +268,12 @@ export default function AuthPage() {
             {(mode === "register" || (view === "forgot" && !!resetToken)) && (
               <>
                 <div style={{ height: 14 }} />
-                <label>{view === "forgot" ? "Confirm New Password" : "Confirm Password"}</label>
+                <label htmlFor="auth-field-confirm">
+                  {view === "forgot" ? "Confirm New Password" : "Confirm Password"}
+                </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
+                    id="auth-field-confirm"
                     data-testid="auth-confirm-password"
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
@@ -271,6 +284,8 @@ export default function AuthPage() {
                   <button
                     type="button"
                     className="ghost"
+                    aria-expanded={showConfirmPassword}
+                    aria-controls="auth-field-confirm"
                     onClick={() => setShowConfirmPassword((v) => !v)}
                     style={{ minWidth: 86 }}
                   >
@@ -282,8 +297,9 @@ export default function AuthPage() {
             {view === "forgot" && (
               <>
                 <div style={{ height: 14 }} />
-                <label>Reset Token</label>
+                <label htmlFor="auth-field-reset-token">Reset Token</label>
                 <input
+                  id="auth-field-reset-token"
                   data-testid="auth-reset-token"
                   value={resetToken}
                   onChange={(e) => setResetToken(e.target.value)}

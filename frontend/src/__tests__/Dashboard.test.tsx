@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "../pages/Dashboard";
-import { ToastProvider } from "../components/ToastProvider";
+import { ToastProvider } from "../components/shell/ToastProvider";
 
 vi.mock("../api", () => ({
   apiFetch: vi.fn(),

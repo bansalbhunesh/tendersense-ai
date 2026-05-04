@@ -8,6 +8,12 @@ import hi from "./locales/hi.json";
 export const NS = ["common", "auth", "dashboard", "workspace", "review", "graph", "errors"] as const;
 export const LANG_STORAGE_KEY = "ts_lang";
 
+function syncDocumentLang(lng?: string) {
+  if (typeof document === "undefined") return;
+  const raw = (lng ?? "en").split("-")[0] ?? "en";
+  document.documentElement.lang = raw === "hi" ? "hi" : "en";
+}
+
 // We keep the locale files split into namespaces (common/auth/...) for
 // readability and reviewability, but merge them into a single i18next
 // "translation" bundle so callers can use plain dotted keys like
@@ -36,6 +42,12 @@ void i18n
       caches: ["localStorage"],
     },
     returnNull: false,
+  })
+  .then(() => {
+    syncDocumentLang(i18n.resolvedLanguage || i18n.language);
+    i18n.on("languageChanged", (lng) => {
+      syncDocumentLang(lng);
+    });
   });
 
 export default i18n;

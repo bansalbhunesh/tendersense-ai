@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ErrorBoundary from "../components/ErrorBoundary";
+import ErrorBoundary from "../components/shell/ErrorBoundary";
 
 function Boom(): JSX.Element {
   throw new Error("kaboom inside child");

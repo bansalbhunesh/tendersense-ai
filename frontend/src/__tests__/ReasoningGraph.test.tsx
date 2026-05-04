@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import ReasoningGraph from "../components/ReasoningGraph";
-import { ToastProvider } from "../components/ToastProvider";
+import ReasoningGraph from "../components/tender/ReasoningGraph";
+import { ToastProvider } from "../components/shell/ToastProvider";
 
 const sampleGraph = {
   nodes: [

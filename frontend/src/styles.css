@@ -15,8 +15,8 @@
   --text: #1c1917;
   --text-secondary: #44403c;
   --muted: #57534e;
-  --font-display: "Outfit", system-ui, sans-serif;
-  --font-ui: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-display: "Domine", Georgia, "Times New Roman", serif;
+  --font-ui: "Lexend", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* Brand — deep indigo + terracotta highlight */
@@ -504,6 +504,58 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Router <Link> styled as a button (valid HTML; avoids <a><button>) */
+a.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+
+a.link-button:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+a.link-button:active {
+  transform: scale(0.98);
+}
+
+a.link-button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+a.link-button--ghost:hover {
+  background: var(--inset);
+  border-color: transparent;
+  color: var(--text);
+}
+
+a.link-button--compact {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+button:focus-visible,
+a.link-button:focus-visible {
+  outline: 2px solid var(--accent-muted);
+  outline-offset: 2px;
+}
+
 /* ——— Lang toggle ——— */
 .lang-toggle {
   display: inline-flex;
@@ -898,7 +950,8 @@ button:disabled {
   }
 
   button.primary,
-  button.ghost {
+  button.ghost,
+  a.link-button {
     min-height: 44px;
   }
 
@@ -906,5 +959,104 @@ button:disabled {
   textarea,
   select {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .lang-toggle button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 16px;
+    font-size: 0.78rem;
+  }
+}
+
+/* ——— Dark (system preference) ——— */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141210;
+    --bg-subtle: #1a1714;
+    --surface: #1f1c18;
+    --surface-2: #26221d;
+    --border: rgba(250, 247, 242, 0.08);
+    --border-strong: rgba(250, 247, 242, 0.14);
+    --ring: rgba(129, 140, 248, 0.45);
+    --text: #f5f0e8;
+    --text-secondary: #d6d0c8;
+    --muted: #a8a29e;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-muted: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, 0.18);
+    --accent-soft-strong: rgba(129, 140, 248, 0.28);
+    --accent-ink: #c7d2fe;
+    --accent-warm: #fb923c;
+    --accent-warm-soft: rgba(251, 146, 60, 0.18);
+    --ok: #22d3ee;
+    --ok-fg: #67e8f9;
+    --ok-soft: rgba(34, 211, 238, 0.12);
+    --warn: #fb923c;
+    --warn-fg: #fdba74;
+    --bad: #f87171;
+    --bad-fg: #fecaca;
+    --bad-soft: rgba(248, 113, 113, 0.12);
+    --review: #60a5fa;
+    --review-fg: #93c5fd;
+    --review-soft: rgba(96, 165, 250, 0.14);
+    --inset: rgba(250, 247, 242, 0.06);
+    --inset-border: rgba(250, 247, 242, 0.1);
+    --progress-track: rgba(250, 247, 242, 0.12);
+    --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 40px -16px rgba(0, 0, 0, 0.55);
+    --hero-shadow: 0 24px 80px -24px rgba(0, 0, 0, 0.65);
+    --ok-rgb: 34, 211, 238;
+  }
+
+  body {
+    background-image:
+      radial-gradient(ellipse 120% 80% at 0% -20%, rgba(129, 140, 248, 0.12), transparent 52%),
+      radial-gradient(ellipse 80% 50% at 100% 0%, rgba(251, 146, 60, 0.08), transparent 46%),
+      radial-gradient(ellipse 60% 40% at 50% 100%, rgba(34, 211, 238, 0.06), transparent 50%);
+  }
+
+  .auth-main {
+    background: var(--surface);
+  }
+
+  .stat-card__value {
+    background: none;
+    -webkit-text-fill-color: var(--text);
+    color: var(--ok);
+  }
+
+  .flash-banner--error {
+    border-color: rgba(248, 113, 113, 0.45);
+    background: rgba(127, 29, 29, 0.45);
+    color: var(--text);
+  }
+
+  .flash-banner--success {
+    border-color: rgba(34, 211, 238, 0.4);
+    background: rgba(14, 116, 144, 0.35);
+    color: var(--text);
+  }
+
+  .flash-banner--warning {
+    border-color: rgba(251, 146, 60, 0.45);
+    background: rgba(154, 52, 18, 0.35);
+    color: var(--text);
+  }
+
+  .flash-banner--info {
+    border-color: rgba(96, 165, 250, 0.45);
+    background: rgba(30, 58, 138, 0.4);
+    color: var(--text);
+  }
+
+  .table th {
+    background: var(--surface-2);
+  }
+
+  .tabs button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
   }
 }
