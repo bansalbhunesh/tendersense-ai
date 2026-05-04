@@ -24,6 +24,11 @@ def test_redact_noise_does_not_corrupt_common_words():
     assert redact_noise("ISO 9001 required") == "ISO 9001 required"
 
 
+def test_redact_noise_skips_o_before_hyphen_or_letters():
+    assert redact_noise("Transformer 10O-1600 kVA") == "Transformer 10O-1600 kVA"
+    assert redact_noise("part 3OEM supply") == "part 3OEM supply"
+
+
 def test_pdfplumber_extracts_text(synthetic_pdf):
     """Native PDFs (text layer present) should round-trip through pdfplumber and
     yield non-empty text + a positive quality score."""

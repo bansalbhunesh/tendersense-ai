@@ -6,6 +6,7 @@ Tesseract (and pdfplumber-only for digital PDFs).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import tempfile
@@ -13,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pdfplumber
 from PIL import Image
 
@@ -171,7 +174,9 @@ def _tesseract_image(path: str, preprocessed: bool = False) -> tuple[str, float]
     gray = im if preprocessed else _preprocess(im)
     fd, prep_path = tempfile.mkstemp(suffix=".prep.png")
     os.close(fd)
-    cv2.imwrite(prep_path, gray)
+    if not cv2.imwrite(prep_path, gray):
+        logger.warning("cv2.imwrite failed path=%s", prep_path)
+        return "", 0.0
     try:
         data = pytesseract.image_to_data(
             Image.open(prep_path),
@@ -216,7 +221,9 @@ def _ocr_scanned_pdf(path: str) -> OCRResult:
                 prep_tmp_path = tf2.name
             try:
                 prep = _preprocess(bgr)
-                cv2.imwrite(prep_tmp_path, prep)
+                if not cv2.imwrite(prep_tmp_path, prep):
+                    logger.warning("cv2.imwrite failed for PDF page %d path=%s", i, prep_tmp_path)
+                    continue
                 pt, conf, boxes = _paddle_ocr_image(prep_tmp_path)
                 engine = "paddleocr"
                 if not pt.strip():
@@ -279,6 +286,10 @@ def redact_noise(text: str) -> str:
     Uses a digit/₹/comma/dot lookbehind (not whitespace), so ``10 OFF`` is not
     touched. Runs are ``[Oo0-9,₹.]+`` until a non-amount character; runs that
     contain only amount symbols and at least one ``O``/``o`` get O→0.
+
+    Skips substitution when the run is immediately followed by ``-`` or ``/``
+    (e.g. ``10O-1600`` ratings, ``IEC``-style references) or by an ASCII letter
+    (avoids ``3OEM``-style acronyms glued to a number).
     """
 
     def fix_block(m: re.Match) -> str:
@@ -287,6 +298,13 @@ def redact_noise(text: str) -> str:
             return block
         if re.search(r"[^\d,₹.Oo]", block):
             return block
+        tail = m.end()
+        if tail < len(text):
+            nxt = text[tail]
+            if nxt in "-/\\":
+                return block
+            if nxt.isascii() and nxt.isalpha():
+                return block
         return block.replace("O", "0").replace("o", "0")
 
     return re.sub(

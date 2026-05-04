@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
+	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +25,31 @@ func UploadDataDir() string {
 		return filepath.Clean(d)
 	}
 	return abs
+}
+
+// MaxUploadBytes caps multipart uploads (default 50 MiB, same order as gin MaxMultipartMemory).
+func MaxUploadBytes() int64 {
+	const defaultMax = int64(50 << 20)
+	s := strings.TrimSpace(os.Getenv("MAX_UPLOAD_BYTES"))
+	if s == "" {
+		return defaultMax
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < 1024 {
+		return defaultMax
+	}
+	return n
+}
+
+// rejectOversizeUpload reports 413 when the client advertised a Content-Length over the cap.
+// When Size is unknown (0), Gin's MaxMultipartMemory still bounds the parsed body.
+func rejectOversizeUpload(c *gin.Context, fh *multipart.FileHeader) bool {
+	max := MaxUploadBytes()
+	if fh != nil && fh.Size > 0 && fh.Size > max {
+		util.PayloadTooLarge(c, fmt.Sprintf("file exceeds maximum size of %d bytes", max))
+		return false
+	}
+	return true
 }
 
 var allowedUploadExts = map[string]struct{}{

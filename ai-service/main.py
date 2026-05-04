@@ -170,6 +170,8 @@ class EvaluateReq(BaseModel):
     tender_id: str = Field(..., max_length=128)
     criteria: list[dict] = Field(default_factory=list, max_length=_MAX_EVAL_CRITERIA)
     bidders: list[dict] = Field(default_factory=list, max_length=_MAX_EVAL_BIDDERS)
+    # Unique per evaluation run so Redis evaluate cache cannot resurrect a prior DB snapshot.
+    cache_bust: str = Field(default="", max_length=128)
 
 
 class DetectLanguageReq(BaseModel):
@@ -384,6 +386,7 @@ def evaluate(req: EvaluateReq) -> dict:
         cache_key = stable_hash_key(
             "evaluate:v2",
             req.tender_id,
+            (req.cache_bust or "").strip(),
             req.criteria,
             [
                 {

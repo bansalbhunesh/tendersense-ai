@@ -22,6 +22,13 @@ def _llm_backend() -> str:
     return (os.getenv("LLM_BACKEND") or "anthropic").strip().lower()
 
 
+def _anthropic_timeout_sec() -> float:
+    try:
+        return max(5.0, float(os.getenv("ANTHROPIC_TIMEOUT_SEC", "120")))
+    except ValueError:
+        return 120.0
+
+
 def _ocr_full_text(ocr: Any) -> str:
     """Aggregate OCR text from top-level `text` or per-page `pages[].text`."""
     if isinstance(ocr, str):
@@ -391,7 +398,7 @@ def _get_llm_client():
             return None, None
         try:
             import anthropic
-            return "anthropic", anthropic.Anthropic(api_key=key)
+            return "anthropic", anthropic.Anthropic(api_key=key, timeout=_anthropic_timeout_sec())
         except ImportError:
             return None, None
     if backend == "groq":

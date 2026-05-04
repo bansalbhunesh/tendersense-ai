@@ -81,12 +81,17 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		})
 	}
 
+	// Fresh evaluation id before the AI call so the Python layer can bust Redis cache
+	// (same id is persisted as the evaluation row).
+	eid := uuid.NewString()
+
 	// 3. AI Service Call (single long request — no stacked retries)
 	var aiOut AIOutput
 	err = util.PostEvaluateJSON(ctx, map[string]any{
-		"tender_id": tenderID,
-		"criteria":  criteria,
-		"bidders":   biddersPayload,
+		"tender_id":   tenderID,
+		"criteria":    criteria,
+		"bidders":     biddersPayload,
+		"cache_bust": eid,
 	}, &aiOut)
 	if err != nil {
 		log.Printf("evaluation.error stage=ai_service tender_id=%s err=%v", tenderID, err)
@@ -124,7 +129,6 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 	}
 
 	// 4. Save results in Transaction
-	eid := uuid.NewString()
 	err = s.repo.WithTransaction(ctx, func(tx *sql.Tx) error {
 		// Clear old results
 		if err := s.repo.ClearTenderResults(ctx, tx, tenderID); err != nil {

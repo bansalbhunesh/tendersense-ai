@@ -241,3 +241,49 @@ func TestGetEvaluationJobStatus_notFound(t *testing.T) {
 		t.Fatalf("expected not_found code, got %s", env.Error.Code)
 	}
 }
+
+func TestGetResults_pagination(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mockOwnerLookup(mock, testTID, testUID)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT graph FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`)).
+		WithArgs(testTID).
+		WillReturnRows(sqlmock.NewRows([]string{"graph"}).AddRow([]byte(`{}`)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM decisions WHERE tender_id=$1`)).
+		WithArgs(testTID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`)).
+		WithArgs(testTID, 1, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"payload"}).AddRow([]byte(`{"k":1}`)))
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set("user_id", testUID); c.Next() })
+	r.GET("/tenders/:id/results", GetResults(db))
+
+	req := httptest.NewRequest(http.MethodGet, "/tenders/"+testTID+"/results?limit=1&offset=0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	pag, _ := body["pagination"].(map[string]any)
+	if pag == nil {
+		t.Fatalf("expected pagination, body=%s", w.Body.String())
+	}
+	total, ok := pag["total"].(float64)
+	if !ok || int(total) != 2 {
+		t.Fatalf("pagination.total want 2 got %v (%T)", pag["total"], pag["total"])
+	}
+	dec, _ := body["decisions"].([]any)
+	if len(dec) != 1 {
+		t.Fatalf("expected 1 decision, got %v", body["decisions"])
+	}
+}

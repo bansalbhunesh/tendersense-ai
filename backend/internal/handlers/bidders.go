@@ -115,6 +115,9 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 			util.BadRequest(c, "file required")
 			return
 		}
+		if !rejectOversizeUpload(c, fh) {
+			return
+		}
 		root := UploadDataDir()
 		_ = os.MkdirAll(root, 0o755)
 		docID := uuid.NewString()

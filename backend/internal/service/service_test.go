@@ -143,6 +143,9 @@ func TestTriggerEvaluation_FiltersInvalidAIRowsAndSavesValidOnes(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
+		if s, ok := req["cache_bust"].(string); !ok || s == "" {
+			t.Fatalf("expected non-empty cache_bust for evaluate cache isolation, got %#v", req["cache_bust"])
+		}
 		criteria, _ := req["criteria"].([]any)
 		if len(criteria) != 1 {
 			t.Fatalf("expected one criterion, got %d", len(criteria))

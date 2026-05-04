@@ -17,6 +17,7 @@ const (
 	CodeInternal            = "internal_error"
 	CodeRateLimited         = "rate_limited"
 	CodeUpstreamUnavailable = "upstream_unavailable"
+	CodePayloadTooLarge     = "payload_too_large"
 )
 
 // ErrorBody is the structured error envelope returned for 4xx/5xx responses.
@@ -117,4 +118,11 @@ func BadGateway(c *gin.Context, message string) {
 		message = "upstream service error"
 	}
 	WriteError(c, http.StatusBadGateway, CodeUpstreamUnavailable, message)
+}
+
+func PayloadTooLarge(c *gin.Context, message string) {
+	if message == "" {
+		message = "request entity too large"
+	}
+	WriteError(c, http.StatusRequestEntityTooLarge, CodePayloadTooLarge, message)
 }

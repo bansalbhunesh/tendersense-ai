@@ -627,7 +627,12 @@ def extract_criteria_llm(text: str) -> list[dict[str, Any]]:
             return _fallback_criteria(text)
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=key)
+
+            try:
+                _to = max(5.0, float(os.getenv("ANTHROPIC_TIMEOUT_SEC", "120")))
+            except ValueError:
+                _to = 120.0
+            client = anthropic.Anthropic(api_key=key, timeout=_to)
         except ImportError:
             logger.warning("anthropic package not installed, using fallback heuristics.")
             return _fallback_criteria(text)

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -222,6 +223,7 @@ func isUniqueViolation(err error) bool {
 }
 
 // GetResults returns the latest evaluation graph + decisions snapshot.
+// Optional query: limit (1..5000) + offset (>=0) for paginated decisions; response includes pagination.total.
 func GetResults(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
@@ -231,13 +233,46 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 		var graph []byte
 		_ = db.QueryRow(`SELECT graph FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&graph)
 
-		rows, err := db.Query(`SELECT payload FROM decisions WHERE tender_id=$1`, tenderID)
+		limitStr := strings.TrimSpace(c.Query("limit"))
+		offset := 0
+		if oStr := strings.TrimSpace(c.Query("offset")); oStr != "" {
+			o, err := strconv.Atoi(oStr)
+			if err != nil || o < 0 {
+				util.BadRequest(c, "offset must be a non-negative integer")
+				return
+			}
+			offset = o
+		}
+
+		var (
+			rows       *sql.Rows
+			err        error
+			decisions  = make([]json.RawMessage, 0)
+			totalCount int
+		)
+
+		if limitStr != "" {
+			limit, aerr := strconv.Atoi(limitStr)
+			if aerr != nil || limit < 1 || limit > 5000 {
+				util.BadRequest(c, "limit must be between 1 and 5000")
+				return
+			}
+			if err := db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE tender_id=$1`, tenderID).Scan(&totalCount); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
+			rows, err = db.Query(
+				`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
+				tenderID, limit, offset,
+			)
+		} else {
+			rows, err = db.Query(`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC`, tenderID)
+		}
 		if err != nil {
 			util.InternalError(c, err.Error())
 			return
 		}
 		defer rows.Close()
-		decisions := make([]json.RawMessage, 0)
 		for rows.Next() {
 			var p []byte
 			if err := rows.Scan(&p); err != nil {
@@ -253,8 +288,11 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 		if len(graph) > 0 {
 			json.Unmarshal(graph, &g)
 		}
+		if limitStr == "" {
+			totalCount = len(decisions)
+		}
 		state := "complete"
-		if len(decisions) == 0 {
+		if totalCount == 0 {
 			var evalStatus string
 			err = db.QueryRow(`SELECT status FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&evalStatus)
 			if err == nil && evalStatus != "" {
@@ -265,7 +303,12 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 				state = "unknown"
 			}
 		}
-		c.JSON(http.StatusOK, gin.H{"tender_id": tenderID, "decisions": decisions, "graph": g, "state": state})
+		out := gin.H{"tender_id": tenderID, "decisions": decisions, "graph": g, "state": state}
+		if limitStr != "" {
+			limit, _ := strconv.Atoi(limitStr)
+			out["pagination"] = gin.H{"total": totalCount, "limit": limit, "offset": offset}
+		}
+		c.JSON(http.StatusOK, out)
 	}
 }
 
