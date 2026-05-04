@@ -8,25 +8,36 @@ import (
 	"strings"
 )
 
+// vercelPreviewOrigin matches typical Vercel deployment hosts (production + previews).
+// Used only when CORS_ALLOW_VERCEL_PREVIEWS=true (demo / hackathon convenience).
+var vercelPreviewOrigin = regexp.MustCompile(`(?i)^https://[a-z0-9][a-z0-9.-]*\.vercel\.app$`)
+
 // App holds validated HTTP and CORS settings from the environment.
 type App struct {
-	Port           string
-	AllowedOrigins []string
-	originRegex    *regexp.Regexp
+	Port                    string
+	AllowedOrigins          []string
+	originRegexes           []*regexp.Regexp
+	allowVercelPreviewHosts bool
 }
 
-// OriginAllowed returns true if the request Origin is listed in ALLOWED_ORIGINS
-// or matches ALLOWED_ORIGIN_REGEX (e.g. Vercel preview URLs).
+// OriginAllowed returns true if the request Origin is listed in ALLOWED_ORIGINS,
+// matches any fragment in ALLOWED_ORIGIN_REGEX (see LoadApp), or matches the
+// optional Vercel preview rule when CORS_ALLOW_VERCEL_PREVIEWS is enabled.
 func (a *App) OriginAllowed(origin string) bool {
 	if origin == "" {
 		return false
 	}
 	for _, o := range a.AllowedOrigins {
-		if o == origin {
+		if strings.EqualFold(o, origin) {
 			return true
 		}
 	}
-	if a.originRegex != nil && a.originRegex.MatchString(origin) {
+	for _, rx := range a.originRegexes {
+		if rx.MatchString(origin) {
+			return true
+		}
+	}
+	if a.allowVercelPreviewHosts && vercelPreviewOrigin.MatchString(origin) {
 		return true
 	}
 	return false
@@ -47,15 +58,27 @@ func LoadApp() (*App, error) {
 	if len(origins) == 0 {
 		return nil, fmt.Errorf("ALLOWED_ORIGINS must contain at least one non-empty origin (comma-separated)")
 	}
-	var rx *regexp.Regexp
+	var regexes []*regexp.Regexp
 	if raw := strings.TrimSpace(os.Getenv("ALLOWED_ORIGIN_REGEX")); raw != "" {
-		var err error
-		rx, err = regexp.Compile(raw)
-		if err != nil {
-			return nil, fmt.Errorf("ALLOWED_ORIGIN_REGEX: %w", err)
+		for _, part := range strings.Split(raw, "|||") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			rx, err := regexp.Compile(part)
+			if err != nil {
+				return nil, fmt.Errorf("ALLOWED_ORIGIN_REGEX fragment %q: %w", part, err)
+			}
+			regexes = append(regexes, rx)
 		}
 	}
-	return &App{Port: port, AllowedOrigins: origins, originRegex: rx}, nil
+	allowVercel := strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "true") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "yes")
+	if allowVercel {
+		log.Println("config: CORS_ALLOW_VERCEL_PREVIEWS enabled — any https://*.vercel.app Origin is allowed (disable for strict production)")
+	}
+	return &App{Port: port, AllowedOrigins: origins, originRegexes: regexes, allowVercelPreviewHosts: allowVercel}, nil
 }
 
 // ValidateCoreSecrets ensures required secrets and URLs are present before opening the database.
