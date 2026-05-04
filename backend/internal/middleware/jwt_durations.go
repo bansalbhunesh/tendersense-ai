@@ -6,15 +6,15 @@ import (
 	"time"
 )
 
-// AccessTokenTTL controls JWT lifetime (default 24h). Examples: 15m, 24h, 168h.
+// AccessTokenTTL controls JWT lifetime (default 15m — limits XSS window for bearer access). Examples: 15m, 1h, 24h.
 func AccessTokenTTL() time.Duration {
 	s := strings.TrimSpace(os.Getenv("JWT_ACCESS_TTL"))
 	if s == "" {
-		return 24 * time.Hour
+		return 15 * time.Minute
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d < 5*time.Minute || d > 168*time.Hour {
-		return 24 * time.Hour
+		return 15 * time.Minute
 	}
 	return d
 }

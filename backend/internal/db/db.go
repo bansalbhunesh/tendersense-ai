@@ -45,9 +45,12 @@ func Migrate(db *sql.DB) error {
 			email TEXT UNIQUE NOT NULL,
 			password_hash TEXT NOT NULL,
 			role TEXT NOT NULL DEFAULT 'officer',
+			access_token_version BIGINT NOT NULL DEFAULT 0,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'officer';`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS access_token_version BIGINT NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ALTER COLUMN access_token_version TYPE BIGINT USING (access_token_version::bigint);`,
 		`CREATE TABLE IF NOT EXISTS refresh_tokens (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -58,6 +61,11 @@ func Migrate(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uq_refresh_tokens_hash ON refresh_tokens(token_hash);`,
+		`CREATE TABLE IF NOT EXISTS revoked_access_jti (
+			jti TEXT PRIMARY KEY,
+			expires_at TIMESTAMPTZ NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_revoked_access_jti_expires ON revoked_access_jti(expires_at);`,
 		`CREATE TABLE IF NOT EXISTS password_reset_tokens (
 			id BIGSERIAL PRIMARY KEY,
 			email TEXT NOT NULL,

@@ -38,6 +38,34 @@ func TestReviewQueue_paginates(t *testing.T) {
 	}
 }
 
+func TestReviewQueue_adminNoOwnerFilter(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\)\s+FROM review_queue rq\s+WHERE rq.status='open'`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+	rows := sqlmock.NewRows([]string{"id", "tender_id", "bidder_id", "criterion_id", "payload", "created_at", "title", "name"}).
+		AddRow("rq1", testTID, testBID, "c1", []byte(`{}`), "2026-01-01", "T", "Acme").
+		AddRow("rq2", testTID, testBID, "c2", []byte(`{}`), "2026-01-02", "T", "Beta")
+	mock.ExpectQuery(`WHERE rq.status='open'\s+ORDER BY rq.created_at`).
+		WithArgs(50, 0).
+		WillReturnRows(rows)
+
+	r := newRouterWithRole(db, testUID, "admin")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/review/queue", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("X-Total-Count") != "2" {
+		t.Fatalf("X-Total-Count=%q", w.Header().Get("X-Total-Count"))
+	}
+}
+
 func TestReviewQueue_negativeLimit(t *testing.T) {
 	db, _, err := sqlmock.New()
 	if err != nil {

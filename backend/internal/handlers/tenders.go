@@ -196,8 +196,9 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		payload, _ := json.Marshal(ocrRes)
 		if _, err := db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID); err != nil {
 			log.Printf("document_ocr_persist_failed document_id=%s err=%v", docID, err)
+		} else {
+			tryMirrorDocumentToS3(db, docID, dest, name)
 		}
-		tryMirrorDocumentToS3(db, docID, dest, name)
 
 		WriteAudit(db, uid, tenderID, "document.uploaded", map[string]any{"document_id": docID, "tender_id": tenderID})
 

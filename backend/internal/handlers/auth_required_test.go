@@ -26,7 +26,7 @@ func TestAuthRequired_missingBearer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	api := r.Group("/api/v1")
-	api.Use(middleware.AuthRequired())
+	api.Use(middleware.AuthRequired(db))
 	api.GET("/tenders", ListTenders(db))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tenders", nil)

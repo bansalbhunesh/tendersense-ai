@@ -18,28 +18,51 @@ var allowedOverrideVerdicts = map[string]struct{}{
 func ReviewQueue(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")
+		admin := strings.EqualFold(strings.TrimSpace(c.GetString("role")), "admin")
 		page, err := util.ParsePagination(c)
 		if err != nil {
 			util.BadRequest(c, err.Error())
 			return
 		}
 		var total int
-		if err := db.QueryRow(`
-			SELECT COUNT(*)
-			FROM review_queue rq
-			JOIN tenders t ON rq.tender_id = t.id
-			WHERE rq.status='open' AND t.owner_id=$1`, uid).Scan(&total); err != nil {
-			util.InternalError(c, err.Error())
-			return
+		if admin {
+			if err := db.QueryRow(`
+				SELECT COUNT(*)
+				FROM review_queue rq
+				WHERE rq.status='open'`).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
+		} else {
+			if err := db.QueryRow(`
+				SELECT COUNT(*)
+				FROM review_queue rq
+				JOIN tenders t ON rq.tender_id = t.id
+				WHERE rq.status='open' AND t.owner_id=$1`, uid).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
 		}
-		rows, err := db.Query(`
-			SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at, t.title, b.name
-			FROM review_queue rq
-			JOIN tenders t ON rq.tender_id = t.id
-			JOIN bidders b ON rq.bidder_id = b.id
-			WHERE rq.status='open' AND t.owner_id=$1
-			ORDER BY rq.created_at
-			LIMIT $2 OFFSET $3`, uid, page.Limit, page.Offset)
+		var rows *sql.Rows
+		if admin {
+			rows, err = db.Query(`
+				SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at, t.title, b.name
+				FROM review_queue rq
+				JOIN tenders t ON rq.tender_id = t.id
+				JOIN bidders b ON rq.bidder_id = b.id
+				WHERE rq.status='open'
+				ORDER BY rq.created_at
+				LIMIT $1 OFFSET $2`, page.Limit, page.Offset)
+		} else {
+			rows, err = db.Query(`
+				SELECT rq.id, rq.tender_id, rq.bidder_id, rq.criterion_id, rq.payload, rq.created_at, t.title, b.name
+				FROM review_queue rq
+				JOIN tenders t ON rq.tender_id = t.id
+				JOIN bidders b ON rq.bidder_id = b.id
+				WHERE rq.status='open' AND t.owner_id=$1
+				ORDER BY rq.created_at
+				LIMIT $2 OFFSET $3`, uid, page.Limit, page.Offset)
+		}
 		if err != nil {
 			util.InternalError(c, err.Error())
 			return

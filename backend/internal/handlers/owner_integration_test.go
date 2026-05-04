@@ -29,7 +29,7 @@ func integrationRouter(database *sql.DB) *gin.Engine {
 	lim.POST("/auth/register", Register(database))
 	lim.POST("/auth/login", Login(database))
 	auth := api.Group("")
-	auth.Use(middleware.AuthRequired())
+	auth.Use(middleware.AuthRequired(database))
 	auth.POST("/tenders", CreateTender(database))
 	auth.GET("/tenders/:id", GetTender(database))
 	return r

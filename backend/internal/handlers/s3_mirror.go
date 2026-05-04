@@ -12,9 +12,19 @@ import (
 
 // tryMirrorDocumentToS3 uploads a successfully processed local file to S3 when configured,
 // then points storage_key at s3:bucket:key and removes the local copy (OCR JSON already in DB).
+// Skips upload/removal if OCR was not persisted — the file remains the only copy until DB has ocr_payload.
 func tryMirrorDocumentToS3(db *sql.DB, docID, localPath, logicalName string) {
 	st, ok := objectstore.FromEnv()
 	if !ok {
+		return
+	}
+	var ocrNull bool
+	if err := db.QueryRow(`SELECT ocr_payload IS NULL FROM documents WHERE id=$1`, docID).Scan(&ocrNull); err != nil {
+		log.Printf("s3_mirror_skip doc_id=%s err=%v", docID, err)
+		return
+	}
+	if ocrNull {
+		log.Printf("s3_mirror_skip doc_id=%s reason=no_ocr_payload_local_retained", docID)
 		return
 	}
 	key := objectstore.ObjectKey(docID, logicalName)

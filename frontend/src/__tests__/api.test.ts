@@ -16,14 +16,17 @@ function jsonResponse(body: unknown, init?: ResponseInit, headers: Record<string
 describe("api token helpers", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("stores, reads, and clears the token", () => {
     expect(token()).toBeNull();
     setToken("abc.def.ghi");
     expect(token()).toBe("abc.def.ghi");
+    expect(sessionStorage.getItem("ts_token")).toBe("abc.def.ghi");
     clearToken();
     expect(token()).toBeNull();
+    expect(sessionStorage.getItem("ts_token")).toBeNull();
   });
 
   it("clears refresh token with clearToken", () => {
@@ -39,6 +42,7 @@ describe("apiFetch unauthorized handling", () => {
 
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     setToken("abc.def.ghi");
     assignSpy = vi.fn();
     Object.defineProperty(window, "location", {
@@ -56,9 +60,11 @@ describe("apiFetch unauthorized handling", () => {
   });
 
   it("clears the stored token and redirects on a 401 response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response("nope", { status: 401, headers: { "content-type": "text/plain" } }),
-    );
+    const unauthorized = new Response("nope", { status: 401, headers: { "content-type": "text/plain" } });
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(unauthorized)
+      .mockResolvedValue(jsonResponse({ message: "signed out" }));
     await expect(apiFetch("/protected")).rejects.toThrow();
     expect(token()).toBeNull();
     expect(assignSpy).toHaveBeenCalledWith("/");
@@ -69,9 +75,11 @@ describe("apiFetch unauthorized handling", () => {
       value: { ...window.location, pathname: "/", assign: assignSpy },
       writable: true,
     });
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response("nope", { status: 401, headers: { "content-type": "text/plain" } }),
-    );
+    const unauthorized = new Response("nope", { status: 401, headers: { "content-type": "text/plain" } });
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(unauthorized)
+      .mockResolvedValue(jsonResponse({ message: "signed out" }));
     await expect(apiFetch("/protected")).rejects.toThrow();
     expect(token()).toBeNull();
     expect(assignSpy).not.toHaveBeenCalled();
@@ -83,9 +91,11 @@ describe("apiFetch unauthorized handling", () => {
     await apiFetch("/me");
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer abc.def.ghi");
+    expect(init.credentials).toBe("include");
   });
 
-  it("retries with refreshed access token after 401 when refresh_token is stored", async () => {
+  it("retries with refreshed access token after 401 when session hint or legacy refresh exists", async () => {
+    sessionStorage.setItem("ts_session", "1");
     setRefreshToken("rt1");
     const fetchMock = vi
       .fn()
@@ -103,12 +113,20 @@ describe("apiFetch unauthorized handling", () => {
     expect(urls[0]).toContain("/me");
     expect(urls[1]).toContain("/auth/refresh");
     expect(urls[2]).toContain("/me");
+    const refreshInit = fetchMock.mock.calls[1][1] as RequestInit;
+    const refreshBody = JSON.parse((refreshInit.body as string) || "{}") as {
+      refresh_token?: string;
+      access_token?: string;
+    };
+    expect(refreshBody.refresh_token).toBe("rt1");
+    expect(refreshBody.access_token).toBe("abc.def.ghi");
   });
 });
 
 describe("apiFetch error message parsing", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -141,6 +159,7 @@ describe("apiFetch error message parsing", () => {
 describe("apiFetchWithMeta", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   afterEach(() => {

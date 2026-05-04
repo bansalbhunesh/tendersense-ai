@@ -100,7 +100,7 @@ test.describe("release smoke", () => {
         return;
       }
 
-      if (method === "GET" && path === `/tenders/${MOCK_TENDER_ID}/results`) {
+      if (method === "GET" && path.startsWith(`/tenders/${MOCK_TENDER_ID}/results`)) {
         await route.fulfill({
           status: 200,
           headers: { "Content-Type": "application/json" },

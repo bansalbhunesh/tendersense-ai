@@ -61,7 +61,7 @@ export default function TenderWorkspace() {
       const [tt, bRes, r] = await Promise.all([
         apiFetch(`/tenders/${tenderId}`) as Promise<Record<string, unknown>>,
         apiFetchWithMeta<{ bidders: { id: string; name: string }[] }>(biddersUrl),
-        apiFetch(`/tenders/${tenderId}/results`).catch(() => null) as Promise<{
+        apiFetch(`/tenders/${tenderId}/results?limit=200&offset=0`).catch(() => null) as Promise<{
           decisions: Record<string, unknown>[];
           graph: Record<string, unknown> | null;
         } | null>,

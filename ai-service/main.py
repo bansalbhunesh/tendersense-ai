@@ -8,6 +8,9 @@ import tempfile
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.cache import cache_get_json, cache_set_json, stable_hash_key
 from app.criteria_extractor import extract_criteria as extract_criteria_lang_aware
@@ -58,8 +61,25 @@ _MAX_PROCESS_CHARS = int(os.getenv("MAX_PROCESS_TEXT_CHARS", "500000"))
 _MAX_CRITERIA_CHARS = int(os.getenv("MAX_CRITERIA_TEXT_CHARS", "400000"))
 _MAX_EVAL_CRITERIA = int(os.getenv("MAX_EVAL_CRITERIA", "200"))
 _MAX_EVAL_BIDDERS = int(os.getenv("MAX_EVAL_BIDDERS", "100"))
+_MAX_JSON_BODY_BYTES = int(os.getenv("MAX_JSON_BODY_BYTES", str(32 * 1024 * 1024)))
 
 DATA_DIR = os.path.abspath(os.getenv("DATA_DIR", "/app/data/uploads"))
+
+
+class LimitJsonBodyMiddleware(BaseHTTPMiddleware):
+    """Reject oversized JSON bodies early using Content-Length (chunked uploads exempt)."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            cl = (request.headers.get("content-length") or "").strip()
+            if cl.isdigit():
+                n = int(cl)
+                if n > _MAX_JSON_BODY_BYTES:
+                    return JSONResponse(
+                        {"detail": "request body too large"},
+                        status_code=413,
+                    )
+        return await call_next(request)
 
 
 def _require_env(name: str) -> str:
@@ -143,6 +163,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(LimitJsonBodyMiddleware)
 
 
 @app.on_event("startup")

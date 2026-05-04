@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
@@ -223,56 +222,36 @@ func isUniqueViolation(err error) bool {
 }
 
 // GetResults returns the latest evaluation graph + decisions snapshot.
-// Optional query: limit (1..5000) + offset (>=0) for paginated decisions; response includes pagination.total.
+// Decisions are always paginated (?limit / ?offset, same caps as util.ParsePagination, max 200).
 func GetResults(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenderID := c.Param("id")
 		if !RequireTenderOwner(db, c, tenderID) {
 			return
 		}
+		page, perr := util.ParsePagination(c)
+		if perr != nil {
+			util.BadRequest(c, perr.Error())
+			return
+		}
 		var graph []byte
 		_ = db.QueryRow(`SELECT graph FROM evaluations WHERE tender_id=$1 ORDER BY updated_at DESC LIMIT 1`, tenderID).Scan(&graph)
 
-		limitStr := strings.TrimSpace(c.Query("limit"))
-		offset := 0
-		if oStr := strings.TrimSpace(c.Query("offset")); oStr != "" {
-			o, err := strconv.Atoi(oStr)
-			if err != nil || o < 0 {
-				util.BadRequest(c, "offset must be a non-negative integer")
-				return
-			}
-			offset = o
+		var totalCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE tender_id=$1`, tenderID).Scan(&totalCount); err != nil {
+			util.InternalError(c, err.Error())
+			return
 		}
-
-		var (
-			rows       *sql.Rows
-			err        error
-			decisions  = make([]json.RawMessage, 0)
-			totalCount int
+		rows, err := db.Query(
+			`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
+			tenderID, page.Limit, page.Offset,
 		)
-
-		if limitStr != "" {
-			limit, aerr := strconv.Atoi(limitStr)
-			if aerr != nil || limit < 1 || limit > 5000 {
-				util.BadRequest(c, "limit must be between 1 and 5000")
-				return
-			}
-			if err := db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE tender_id=$1`, tenderID).Scan(&totalCount); err != nil {
-				util.InternalError(c, err.Error())
-				return
-			}
-			rows, err = db.Query(
-				`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
-				tenderID, limit, offset,
-			)
-		} else {
-			rows, err = db.Query(`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC`, tenderID)
-		}
 		if err != nil {
 			util.InternalError(c, err.Error())
 			return
 		}
 		defer rows.Close()
+		decisions := make([]json.RawMessage, 0)
 		for rows.Next() {
 			var p []byte
 			if err := rows.Scan(&p); err != nil {
@@ -288,9 +267,6 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 		if len(graph) > 0 {
 			json.Unmarshal(graph, &g)
 		}
-		if limitStr == "" {
-			totalCount = len(decisions)
-		}
 		state := "complete"
 		if totalCount == 0 {
 			var evalStatus string
@@ -303,12 +279,14 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 				state = "unknown"
 			}
 		}
-		out := gin.H{"tender_id": tenderID, "decisions": decisions, "graph": g, "state": state}
-		if limitStr != "" {
-			limit, _ := strconv.Atoi(limitStr)
-			out["pagination"] = gin.H{"total": totalCount, "limit": limit, "offset": offset}
-		}
-		c.JSON(http.StatusOK, out)
+		util.SetTotalCountHeader(c, totalCount)
+		c.JSON(http.StatusOK, gin.H{
+			"tender_id":   tenderID,
+			"decisions":   decisions,
+			"graph":       g,
+			"state":       state,
+			"pagination": gin.H{"total": totalCount, "limit": page.Limit, "offset": page.Offset},
+		})
 	}
 }
 
@@ -319,7 +297,23 @@ func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		bid := c.Param("bid")
-		rows, err := db.Query(`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2`, tenderID, bid)
+		page, perr := util.ParsePagination(c)
+		if perr != nil {
+			util.BadRequest(c, perr.Error())
+			return
+		}
+		var total int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM decisions WHERE tender_id=$1 AND bidder_id=$2`,
+			tenderID, bid,
+		).Scan(&total); err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
+		rows, err := db.Query(
+			`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2 ORDER BY created_at ASC LIMIT $3 OFFSET $4`,
+			tenderID, bid, page.Limit, page.Offset,
+		)
 		if err != nil {
 			util.InternalError(c, err.Error())
 			return
@@ -337,6 +331,11 @@ func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, err.Error())
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"bidder_id": bid, "decisions": out})
+		util.SetTotalCountHeader(c, total)
+		c.JSON(http.StatusOK, gin.H{
+			"bidder_id":   bid,
+			"decisions":   out,
+			"pagination": gin.H{"total": total, "limit": page.Limit, "offset": page.Offset},
+		})
 	}
 }

@@ -270,6 +270,9 @@ func TestGetResults_pagination(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 got %d body=%s", w.Code, w.Body.String())
 	}
+	if w.Header().Get("X-Total-Count") != "2" {
+		t.Fatalf("X-Total-Count=%q", w.Header().Get("X-Total-Count"))
+	}
 	var body map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)

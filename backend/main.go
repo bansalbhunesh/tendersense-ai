@@ -19,7 +19,9 @@ import (
 	"github.com/tendersense/backend/internal/db"
 	"github.com/tendersense/backend/internal/handlers"
 	"github.com/tendersense/backend/internal/middleware"
+	"github.com/tendersense/backend/internal/redisclient"
 	"github.com/tendersense/backend/internal/repository"
+	"github.com/tendersense/backend/internal/revocation"
 	"github.com/tendersense/backend/internal/service"
 	"github.com/tendersense/backend/internal/util/pii"
 )
@@ -54,6 +56,13 @@ func main() {
 	if err := db.RecoverInterruptedJobs(database); err != nil {
 		log.Printf("warning: failed to recover interrupted evaluation jobs: %v", err)
 	}
+	revocation.StartCleanupLoop(database, time.Hour)
+	redisClient := redisclient.NewOptional()
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("GIN_MODE")), "release") &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_REDIS")), "true") &&
+		redisClient == nil {
+		log.Fatal("REQUIRE_REDIS=true but REDIS_URL is missing or invalid (needed for distributed eval rate limits)")
+	}
 
 	repo := repository.NewTenderRepository(database)
 	tenderService := service.NewTenderService(repo)
@@ -65,6 +74,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(middleware.RequestObservability())
+	r.Use(middleware.SecurityHeaders())
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.MaxMultipartMemory = 50 << 20 // 50 MB max upload
@@ -73,7 +83,7 @@ func main() {
 		AllowOriginFunc:  appCfg.OriginAllowed,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type", "Accept"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 	}
 	r.Use(cors.New(corsCfg))
 
@@ -99,7 +109,7 @@ func main() {
 		}
 
 		auth := api.Group("")
-		auth.Use(middleware.AuthRequired())
+		auth.Use(middleware.AuthRequired(database))
 		{
 			auth.POST("/tenders", handlers.CreateTender(database))
 			auth.GET("/tenders", handlers.ListTenders(database))
@@ -107,7 +117,7 @@ func main() {
 			auth.POST("/tenders/:id/documents", handlers.UploadTenderDocument(database))
 			auth.POST("/tenders/:id/bidders", handlers.RegisterBidder(database))
 			auth.GET("/tenders/:id/bidders", handlers.ListBidders(database))
-			auth.POST("/tenders/:id/evaluate", middleware.EvaluateRouteLimiter(10, 5), handlers.TriggerEvaluation(tenderService, database))
+			auth.POST("/tenders/:id/evaluate", middleware.EvaluateRouteLimiter(10, 5, redisClient), handlers.TriggerEvaluation(tenderService, database))
 			auth.GET("/tenders/:id/evaluate/jobs/:job", handlers.GetEvaluationJobStatus(database))
 			auth.GET("/tenders/:id/results", handlers.GetResults(database))
 			auth.GET("/tenders/:id/bidders/:bid/decisions", handlers.GetBidderBreakdown(database))

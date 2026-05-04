@@ -18,12 +18,20 @@ import (
 // newRouter spins up a gin engine that injects a fake user_id (skipping JWT)
 // and registers handlers using the supplied *sql.DB.
 func newRouter(db *sql.DB, userID string) *gin.Engine {
+	return newRouterWithRole(db, userID, "")
+}
+
+// newRouterWithRole also sets gin context "role" when role is non-empty (e.g. "admin").
+func newRouterWithRole(db *sql.DB, userID, role string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	api := r.Group("/api/v1")
 	api.Use(func(c *gin.Context) {
 		if userID != "" {
 			c.Set("user_id", userID)
+		}
+		if role != "" {
+			c.Set("role", role)
 		}
 		c.Next()
 	})

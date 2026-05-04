@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -17,10 +18,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/tendersense/backend/internal/authcookie"
 	"github.com/tendersense/backend/internal/middleware"
+	"github.com/tendersense/backend/internal/revocation"
 	"github.com/tendersense/backend/internal/util"
 )
 
@@ -159,12 +163,13 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "database error")
 			return
 		}
-		access, err := middleware.GenerateAccessToken(id, email, "officer")
+		access, err := middleware.GenerateAccessToken(id, email, "officer", 0)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
 		}
-		c.JSON(http.StatusCreated, authTokenResponse(access, refresh, id))
+		authcookie.Set(c, refresh)
+		c.JSON(http.StatusCreated, authTokenResponse(access, id))
 	}
 }
 
@@ -181,7 +186,8 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		var id, hash, role string
-		err := db.QueryRow(`SELECT id, password_hash, COALESCE(role,'officer') FROM users WHERE email=$1`, email).Scan(&id, &hash, &role)
+		var tokenVer int64
+		err := db.QueryRow(`SELECT id::text, password_hash, COALESCE(role,'officer'), COALESCE(access_token_version,0) FROM users WHERE email=$1`, email).Scan(&id, &hash, &role, &tokenVer)
 		if err == sql.ErrNoRows {
 			util.Unauthorized(c, "invalid credentials")
 			return
@@ -203,12 +209,13 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "session error")
 			return
 		}
-		access, err := middleware.GenerateAccessToken(id, email, role)
+		access, err := middleware.GenerateAccessToken(id, email, role, tokenVer)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
 		}
-		c.JSON(http.StatusOK, authTokenResponse(access, refresh, id))
+		authcookie.Set(c, refresh)
+		c.JSON(http.StatusOK, authTokenResponse(access, id))
 	}
 }
 
@@ -325,7 +332,7 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		if _, err := tx.Exec(`UPDATE users SET password_hash=$1 WHERE email=$2`, string(hash), req.Email); err != nil {
+		if _, err := tx.Exec(`UPDATE users SET password_hash=$1, access_token_version = COALESCE(access_token_version,0)+1 WHERE email=$2`, string(hash), req.Email); err != nil {
 			util.InternalError(c, "failed to update password")
 			return
 		}
@@ -349,37 +356,52 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
-func authTokenResponse(access, refresh, userID string) gin.H {
+func authTokenResponse(access, userID string) gin.H {
 	return gin.H{
-		"access_token":  access,
-		"refresh_token": refresh,
-		"token":         access,
-		"token_type":    "Bearer",
-		"expires_in":    int(middleware.AccessTokenTTL().Seconds()),
-		"user_id":       userID,
+		"access_token": access,
+		"token":        access,
+		"token_type":   "Bearer",
+		"expires_in":   int(middleware.AccessTokenTTL().Seconds()),
+		"user_id":      userID,
 	}
 }
 
 type refreshBody struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
+	// Optional when HttpOnly refresh cookie is sent (preferred).
+	RefreshToken string `json:"refresh_token"`
+	// AccessToken, when sent, is revoked server-side after a successful refresh
+	// so the previous short-lived JWT cannot be reused alongside the new pair.
+	AccessToken string `json:"access_token"`
+}
+
+func readRefreshRaw(c *gin.Context, bodyToken string) string {
+	if v := authcookie.Read(c); v != "" {
+		return v
+	}
+	return strings.TrimSpace(bodyToken)
 }
 
 // RefreshSession rotates refresh token and returns a new access token.
 func RefreshSession(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body refreshBody
-		if err := c.ShouldBindJSON(&body); err != nil {
+		_ = c.ShouldBindJSON(&body)
+		revokeAccessTokenIfValid(db, body.AccessToken)
+		rawRefresh := readRefreshRaw(c, body.RefreshToken)
+		if rawRefresh == "" {
 			util.BadRequest(c, "refresh_token required")
 			return
 		}
-		h := hashRefreshToken(strings.TrimSpace(body.RefreshToken))
+		h := hashRefreshToken(rawRefresh)
 		var uid, email, role string
+		var tokenVer int64
 		err := db.QueryRow(`
-			SELECT u.id::text, u.email, COALESCE(u.role,'officer')
+			SELECT u.id::text, u.email, COALESCE(u.role,'officer'), COALESCE(u.access_token_version,0)
 			  FROM refresh_tokens r
 			  JOIN users u ON u.id = r.user_id
-			 WHERE r.token_hash = $1 AND r.revoked_at IS NULL AND r.expires_at > now()`, h).Scan(&uid, &email, &role)
+			 WHERE r.token_hash = $1 AND r.revoked_at IS NULL AND r.expires_at > now()`, h).Scan(&uid, &email, &role, &tokenVer)
 		if err == sql.ErrNoRows {
+			authcookie.Clear(c)
 			util.Unauthorized(c, "invalid refresh token")
 			return
 		}
@@ -410,17 +432,19 @@ func RefreshSession(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "commit")
 			return
 		}
-		access, err := middleware.GenerateAccessToken(uid, email, role)
+		access, err := middleware.GenerateAccessToken(uid, email, role, tokenVer)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
 		}
-		c.JSON(http.StatusOK, authTokenResponse(access, raw, uid))
+		authcookie.Set(c, raw)
+		c.JSON(http.StatusOK, authTokenResponse(access, uid))
 	}
 }
 
 type logoutBody struct {
 	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token"`
 }
 
 // LogoutSession revokes a single refresh token (no bearer required).
@@ -428,10 +452,13 @@ func LogoutSession(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body logoutBody
 		_ = c.ShouldBindJSON(&body)
-		if err := revokeRefreshByRaw(db, strings.TrimSpace(body.RefreshToken)); err != nil {
+		revokeAccessTokenIfValid(db, body.AccessToken)
+		rt := readRefreshRaw(c, body.RefreshToken)
+		if err := revokeRefreshByRaw(db, rt); err != nil {
 			util.InternalError(c, "logout failed")
 			return
 		}
+		authcookie.Clear(c)
 		c.JSON(http.StatusOK, gin.H{"message": "signed out"})
 	}
 }
@@ -444,6 +471,53 @@ func LogoutAllSessions(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "logout failed")
 			return
 		}
+		if _, err := db.Exec(`UPDATE users SET access_token_version = COALESCE(access_token_version,0)+1 WHERE id=$1::uuid`, uid); err != nil {
+			util.InternalError(c, "logout failed")
+			return
+		}
+		jti := strings.TrimSpace(c.GetString("access_jti"))
+		if jti != "" {
+			exp := time.Now().Add(middleware.AccessTokenTTL())
+			if v, ok := c.Get("access_exp"); ok {
+				if t, ok := v.(time.Time); ok && !t.IsZero() {
+					exp = t
+				}
+			}
+			_ = revocation.RevokeAccessJTI(c.Request.Context(), db, jti, exp)
+		}
+		authcookie.Clear(c)
 		c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"})
 	}
+}
+
+func revokeAccessTokenIfValid(db *sql.DB, raw string) {
+	if db == nil {
+		return
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	var claims middleware.Claims
+	_, err := jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return middleware.JWTSecret(), nil
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil {
+		return
+	}
+	jti := strings.TrimSpace(claims.ID)
+	if jti == "" || claims.ExpiresAt == nil {
+		return
+	}
+	exp := claims.ExpiresAt.Time
+	if time.Now().After(exp) {
+		return
+	}
+	_ = revocation.RevokeAccessJTI(context.Background(), db, jti, exp)
 }

@@ -1,11 +1,5 @@
-# Demo screenshots
+# Screenshots for judges / README
 
-Add PNG or WebP captures here for README / pitch decks:
+Add PNGs here (for example `dashboard.png`, `reasoning-graph.png`, `review-queue.png`) and link them from the root [`README.md`](../../README.md) **Screenshots / video** section.
 
-| File | Suggested content |
-|------|-------------------|
-| `dashboard.png` | Officer tender list / dashboard |
-| `reasoning-graph.png` | Evaluation reasoning graph with verdict colours |
-| `review-queue.png` | Review queue with overrides |
-
-After exporting, link them from the root `README.md` **Demo media** section.
+Recommended width: 1200–1600 px. Keep filenames stable so README links do not break.

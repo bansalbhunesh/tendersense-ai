@@ -52,7 +52,7 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 
 There is **no hosted demo by default** (sovereign / self-hosted mode). Use **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for Fly.io / MinIO / env wiring, then paste your **live URL** here.
 
-**Screenshots / video:** add files under [`docs/screenshots/`](docs/screenshots/) (e.g. `dashboard.png`, `reasoning-graph.png`, `review-queue.png`) and link them below before judging:
+**Screenshots / video:** add files under [`docs/screenshots/`](docs/screenshots/) (see [`docs/screenshots/README.md`](docs/screenshots/README.md)) — e.g. `dashboard.png`, `reasoning-graph.png`, `review-queue.png` — then link them below before judging:
 
 - Dashboard: _add link_
 - Reasoning graph: _add link_
@@ -174,7 +174,7 @@ Every PR runs all four jobs in `.github/workflows/ci.yml`.
 | `POST` | `/api/v1/tenders/:id/bidders` | Register bidder |
 | `POST` | `/api/v1/tenders/:id/evaluate` | Trigger async evaluation; returns `job_id` |
 | `GET` | `/api/v1/tenders/:id/evaluate/jobs/:job` | Poll job status (DB-backed; survives restart) |
-| `GET` | `/api/v1/tenders/:id/results` | Per-bidder verdicts + reasoning |
+| `GET` | `/api/v1/tenders/:id/results` | Verdicts + graph; decisions paginated (`?limit`/`?offset`, max 200) with `pagination` + `X-Total-Count` |
 | `GET`/`POST` | `/api/v1/review/queue`, `/review/override` | Officer review workflow |
 | `GET` | `/api/v1/audit` | Append-only audit log |
 | `GET` | `/api/v1/version` | `{ version, commit }` |
@@ -187,8 +187,12 @@ Every PR runs all four jobs in `.github/workflows/ci.yml`.
 
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | Backend | — | Postgres DSN |
+| `DATABASE_URL` | Backend | — | Postgres DSN (e.g. Render injects this for the live API) |
+| `TEST_DATABASE_URL` | Backend (tests only) | _empty_ | **Not used on Render at runtime.** Set only when running `go test -tags=integration` locally/CI against a **disposable** Postgres; integration tests ignore `DATABASE_URL` on purpose so they never hit prod by accident. |
 | `JWT_SECRET` | Backend | — | **Required.** ≥ 32 chars (warns below) |
+| `JWT_ACCESS_TTL` | Backend | `15m` | Access JWT lifetime (max 168h). Shorter = smaller XSS window for bearer tokens. |
+| `REFRESH_COOKIE_SAMESITE` / `REFRESH_COOKIE_SECURE` | Backend | Lax / auto | Use `REFRESH_COOKIE_SAMESITE=none` and HTTPS when the **SPA origin ≠ API origin** (cross-site fetch needs `SameSite=None; Secure`). |
+| `REQUIRE_REDIS` | Backend | _unset_ | With `GIN_MODE=release` and `REQUIRE_REDIS=true`, process exits unless `REDIS_URL` is valid (cluster-wide eval rate limits). |
 | `ALLOWED_ORIGINS` | Backend, AI | — | CSV list of allowed CORS origins |
 | `ALLOWED_ORIGIN_REGEX` | Backend | _empty_ | Optional regex allowlist for dynamic preview URLs |
 | `AI_SERVICE_URL` | Backend | `http://localhost:8081` | AI service base URL |
@@ -205,8 +209,9 @@ Every PR runs all four jobs in `.github/workflows/ci.yml`.
 | `TRANSLATION_BACKEND` | AI | `disabled` | `disabled` (passthrough) / `bhashini` (ULCA pipeline) |
 | `BHASHINI_USER_ID`, `BHASHINI_API_KEY`, `BHASHINI_PIPELINE_ID`, `BHASHINI_INFERENCE_URL` | AI | _empty_ | Required when `TRANSLATION_BACKEND=bhashini` |
 | `OCR_LANGS` | AI | `eng` | Tesseract language stack. Set to `eng+hin` to enable Hindi OCR + a Devanagari PaddleOCR pass |
-| `REDIS_URL` | AI | _empty_ | Optional cache; silent no-op when unset |
+| `REDIS_URL` | Backend, AI | _empty_ | Backend: optional cluster-wide eval rate limits; AI: OCR/criteria cache. |
 | `EVALUATE_CACHE_TTL_SECONDS` | AI | `900` | Eval result cache TTL |
+| `MAX_JSON_BODY_BYTES` | AI | `33554432` (32 MiB) | Rejects JSON POST/PUT bodies larger than this when `Content-Length` is set (DoS guard). |
 | `GIT_SHA` | Both | _empty_ | Surfaced via `/version` endpoints |
 | `VITE_DEMO_EMAIL`, `VITE_DEMO_PASSWORD` | Frontend (dev only) | _empty_ | Populates a "Fill demo creds" button in dev builds; never committed |
 

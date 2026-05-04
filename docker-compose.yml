@@ -71,6 +71,7 @@ services:
       - "8080:8080"
     environment:
       - DATABASE_URL=postgres://tendersense:tendersense@db:5432/tendersense?sslmode=disable
+      - REDIS_URL=redis://redis:6379/1
       - AI_SERVICE_URL=http://ai-service:8081
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - ALLOWED_ORIGIN_REGEX=${ALLOWED_ORIGIN_REGEX:-}
@@ -90,6 +91,8 @@ services:
       # - S3_BUCKET=tendersense
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       ai-service:
         condition: service_healthy
