@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -188,7 +189,7 @@ func Login(db *sql.DB) gin.HandlerFunc {
 		var id, hash, role string
 		var tokenVer int64
 		err := db.QueryRow(`SELECT id::text, password_hash, COALESCE(role,'officer'), COALESCE(access_token_version,0) FROM users WHERE email=$1`, email).Scan(&id, &hash, &role, &tokenVer)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.Unauthorized(c, "invalid credentials")
 			return
 		}
@@ -234,7 +235,7 @@ func ForgotPassword(db *sql.DB) gin.HandlerFunc {
 
 		var userID string
 		err := db.QueryRow(`SELECT id FROM users WHERE email=$1`, req.Email).Scan(&userID)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusOK, gin.H{"message": "If an account exists, a reset token has been issued."})
 			return
 		}
@@ -310,7 +311,7 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 			 ORDER BY created_at DESC LIMIT 1`,
 			req.Email, req.ResetToken,
 		).Scan(&tokenID)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.BadRequest(c, "invalid or expired reset token")
 			return
 		}
@@ -403,7 +404,7 @@ func RefreshSession(db *sql.DB) gin.HandlerFunc {
 			  FROM refresh_tokens r
 			  JOIN users u ON u.id = r.user_id
 			 WHERE r.token_hash = $1 AND r.revoked_at IS NULL AND r.expires_at > now()`, h).Scan(&uid, &email, &role, &tokenVer)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			authcookie.Clear(c)
 			util.Unauthorized(c, "invalid refresh token")
 			return

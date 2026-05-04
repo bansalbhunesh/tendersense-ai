@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -85,7 +86,7 @@ func PatchCriterion(db *sql.DB) gin.HandlerFunc {
 		delete(patch, "id")
 		var payloadB []byte
 		err := db.QueryRow(`SELECT payload FROM criteria WHERE id=$1 AND tender_id=$2`, critID, tenderID).Scan(&payloadB)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "criterion not found")
 			return
 		}

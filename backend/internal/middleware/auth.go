@@ -149,7 +149,7 @@ func AuthRequired(db *sql.DB) gin.HandlerFunc {
 		var dbTV int64
 		if db != nil {
 			dbRole, dbTV, err = loadRoleAndTV(ctx, db, claims.UserID)
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				util.Unauthorized(c, "invalid or expired token")
 				return
 			}

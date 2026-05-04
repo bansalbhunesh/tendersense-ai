@@ -3,6 +3,7 @@ package revocation
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
@@ -78,7 +79,7 @@ func AccessJTIRevoked(ctx context.Context, db *sql.DB, jti string) (bool, error)
 	}
 	var expAt time.Time
 	err := db.QueryRowContext(ctx, `SELECT expires_at FROM revoked_access_jti WHERE jti = $1 LIMIT 1`, jti).Scan(&expAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		if rdb != nil {
 			_ = rdb.Set(ctx, jtiOkKey(jti), "1", 25*time.Second).Err()
 		}

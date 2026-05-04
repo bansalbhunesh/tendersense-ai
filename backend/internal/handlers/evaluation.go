@@ -239,8 +239,12 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 
 		var totalCount int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE tender_id=$1`, tenderID).Scan(&totalCount); err != nil {
-			util.InternalError(c, err.Error())
-			return
+			if errors.Is(err, sql.ErrNoRows) {
+				totalCount = 0
+			} else {
+				util.InternalError(c, err.Error())
+				return
+			}
 		}
 		rows, err := db.Query(
 			`SELECT payload FROM decisions WHERE tender_id=$1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`,
@@ -259,7 +263,7 @@ func GetResults(db *sql.DB) gin.HandlerFunc {
 			}
 			decisions = append(decisions, p)
 		}
-		if err := rows.Err(); err != nil {
+		if err := rows.Err(); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			util.InternalError(c, err.Error())
 			return
 		}
@@ -307,8 +311,12 @@ func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 			`SELECT COUNT(*) FROM decisions WHERE tender_id=$1 AND bidder_id=$2`,
 			tenderID, bid,
 		).Scan(&total); err != nil {
-			util.InternalError(c, err.Error())
-			return
+			if errors.Is(err, sql.ErrNoRows) {
+				total = 0
+			} else {
+				util.InternalError(c, err.Error())
+				return
+			}
 		}
 		rows, err := db.Query(
 			`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2 ORDER BY created_at ASC LIMIT $3 OFFSET $4`,
@@ -327,7 +335,7 @@ func GetBidderBreakdown(db *sql.DB) gin.HandlerFunc {
 			}
 			out = append(out, p)
 		}
-		if err := rows.Err(); err != nil {
+		if err := rows.Err(); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			util.InternalError(c, err.Error())
 			return
 		}

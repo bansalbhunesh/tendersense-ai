@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -131,7 +132,7 @@ func SubmitOverride(db *sql.DB) gin.HandlerFunc {
 			`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
 			req.TenderID, req.BidderID, req.CriterionID,
 		).Scan(&oldPayload)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "decision not found")
 			return
 		}
@@ -266,7 +267,7 @@ func DecisionEvidence(db *sql.DB) gin.HandlerFunc {
 			`SELECT payload FROM decisions WHERE tender_id=$1 AND bidder_id=$2 AND criterion_id=$3`,
 			tenderID, bid, crit,
 		).Scan(&payload)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "not found")
 			return
 		}

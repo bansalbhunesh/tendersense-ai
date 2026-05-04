@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -53,8 +54,12 @@ func ListBidders(db *sql.DB) gin.HandlerFunc {
 		}
 		var total int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM bidders WHERE tender_id=$1`, tenderID).Scan(&total); err != nil {
-			util.InternalError(c, err.Error())
-			return
+			if errors.Is(err, sql.ErrNoRows) {
+				total = 0
+			} else {
+				util.InternalError(c, err.Error())
+				return
+			}
 		}
 		rows, err := db.Query(
 			`SELECT id, name, created_at FROM bidders WHERE tender_id=$1 ORDER BY created_at LIMIT $2 OFFSET $3`,
@@ -74,7 +79,7 @@ func ListBidders(db *sql.DB) gin.HandlerFunc {
 			}
 			out = append(out, map[string]any{"id": id, "name": name, "created_at": created})
 		}
-		if err := rows.Err(); err != nil {
+		if err := rows.Err(); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			util.InternalError(c, err.Error())
 			return
 		}
@@ -92,7 +97,7 @@ func GetBidder(db *sql.DB) gin.HandlerFunc {
 		}
 		var name string
 		err := db.QueryRow(`SELECT name FROM bidders WHERE id=$1`, id).Scan(&name)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "not found")
 			return
 		}

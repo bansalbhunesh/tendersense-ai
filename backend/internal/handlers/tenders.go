@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -54,8 +55,12 @@ func ListTenders(db *sql.DB) gin.HandlerFunc {
 		var rows *sql.Rows
 		if admin {
 			if err := db.QueryRow(`SELECT COUNT(*) FROM tenders`).Scan(&total); err != nil {
-				util.InternalError(c, err.Error())
-				return
+				if errors.Is(err, sql.ErrNoRows) {
+					total = 0
+				} else {
+					util.InternalError(c, err.Error())
+					return
+				}
 			}
 			rows, err = db.Query(
 				`SELECT id, title, status, created_at FROM tenders ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
@@ -63,8 +68,12 @@ func ListTenders(db *sql.DB) gin.HandlerFunc {
 			)
 		} else {
 			if err := db.QueryRow(`SELECT COUNT(*) FROM tenders WHERE owner_id=$1`, uid).Scan(&total); err != nil {
-				util.InternalError(c, err.Error())
-				return
+				if errors.Is(err, sql.ErrNoRows) {
+					total = 0
+				} else {
+					util.InternalError(c, err.Error())
+					return
+				}
 			}
 			rows, err = db.Query(
 				`SELECT id, title, status, created_at FROM tenders WHERE owner_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
@@ -85,7 +94,7 @@ func ListTenders(db *sql.DB) gin.HandlerFunc {
 			}
 			out = append(out, map[string]any{"id": id, "title": title, "status": status, "created_at": created})
 		}
-		if err := rows.Err(); err != nil {
+		if err := rows.Err(); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			util.InternalError(c, err.Error())
 			return
 		}
@@ -103,7 +112,7 @@ func GetTender(db *sql.DB) gin.HandlerFunc {
 		var title, desc, status string
 		var created interface{}
 		err := db.QueryRow(`SELECT title, description, status, created_at FROM tenders WHERE id=$1`, id).Scan(&title, &desc, &status, &created)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "not found")
 			return
 		}

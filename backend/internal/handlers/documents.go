@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -31,7 +32,7 @@ func DocumentPresign(db *sql.DB) gin.HandlerFunc {
 			   AND ($2 OR COALESCE(t1.owner_id::text, t2.owner_id::text) = $3)`,
 			docID, admin, uid,
 		).Scan(&storageKey)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			util.NotFound(c, "document not found")
 			return
 		}
