@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch, apiFetchWithMeta, clearToken, setToken, token } from "../api";
+import { apiFetch, apiFetchWithMeta, clearToken, refreshToken, setRefreshToken, setToken, token } from "../api";
 
 const originalFetch = globalThis.fetch;
 const originalAssign = window.location.assign;
@@ -24,6 +24,13 @@ describe("api token helpers", () => {
     expect(token()).toBe("abc.def.ghi");
     clearToken();
     expect(token()).toBeNull();
+  });
+
+  it("clears refresh token with clearToken", () => {
+    setRefreshToken("refresh-secret");
+    expect(refreshToken()).toBe("refresh-secret");
+    clearToken();
+    expect(refreshToken()).toBeNull();
   });
 });
 
@@ -76,6 +83,26 @@ describe("apiFetch unauthorized handling", () => {
     await apiFetch("/me");
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer abc.def.ghi");
+  });
+
+  it("retries with refreshed access token after 401 when refresh_token is stored", async () => {
+    setRefreshToken("rt1");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("expired", { status: 401 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ access_token: "new.access", refresh_token: "rt2", token: "new.access" }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    globalThis.fetch = fetchMock;
+    await apiFetch("/me");
+    expect(token()).toBe("new.access");
+    expect(refreshToken()).toBe("rt2");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const urls = fetchMock.mock.calls.map((c) => String(c[0] ?? ""));
+    expect(urls[0]).toContain("/me");
+    expect(urls[1]).toContain("/auth/refresh");
+    expect(urls[2]).toContain("/me");
   });
 });
 

@@ -55,12 +55,11 @@ def test_relative_inside_root_accepted(tmp_data_dir, monkeypatch):
 
 
 def test_symlink_escape_rejected(tmp_data_dir, tmp_path, monkeypatch):
-    """A symlink inside DATA_DIR pointing to /etc/passwd must NOT be allowed
-    (validate_path uses realpath and compares against the real DATA_DIR root)."""
+    """A symlink inside DATA_DIR whose target resolves outside DATA_ROOT must be rejected."""
     main_mod = _import_main(monkeypatch, tmp_data_dir)
-    target = Path("/etc/passwd")
-    if not target.exists():
-        pytest.skip("/etc/passwd not present on this system")
+    # Target outside DATA_DIR (portable; avoids relying on /etc/passwd).
+    target = tmp_path / "secret_outside_root.txt"
+    target.write_text("secret", encoding="utf-8")
     link = Path(tmp_data_dir) / "evil-link"
     try:
         os.symlink(str(target), str(link))
