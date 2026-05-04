@@ -190,6 +190,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			Engine  string  `json:"engine"`
 		}
 		if err := util.PostDocumentFile(c.Request.Context(), dest, docID, &ocrRes); err != nil {
+			log.Printf("document_ocr_upstream_failed tender_id=%s document_id=%s err=%v", tenderID, docID, err)
 			util.BadGateway(c, "OCR service is temporarily unavailable; please try again in a moment")
 			return
 		}

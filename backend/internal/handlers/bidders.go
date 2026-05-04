@@ -156,6 +156,7 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 			Pages   []map[string]any `json:"pages"`
 		}
 		if err := util.PostDocumentFile(c.Request.Context(), dest, docID, &ocrRes); err != nil {
+			log.Printf("bidder_doc_ocr_upstream_failed tender_id=%s bidder_id=%s document_id=%s err=%v", tenderID, bidderID, docID, err)
 			util.BadGateway(c, "OCR service is temporarily unavailable; please try again in a moment")
 			return
 		}

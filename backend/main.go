@@ -43,6 +43,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if strings.TrimSpace(os.Getenv("AI_SERVICE_URL")) == "" {
+		log.Println("warning: AI_SERVICE_URL is unset — OCR, criteria extraction, and evaluation use http://localhost:8081; set AI_SERVICE_URL to your deployed Python ai-service (see docs/DEPLOYMENT.md)")
+	}
 
 	database, err := db.Connect()
 	if err != nil {
