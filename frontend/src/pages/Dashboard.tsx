@@ -194,11 +194,19 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
+                rows.map((r) => {
+                  const st = String(r.status || "").toLowerCase();
+                  const chip =
+                    st === "open"
+                      ? { cls: "badge ok", label: t("dashboard.statusOpen") }
+                      : st === "draft"
+                        ? { cls: "badge", label: t("dashboard.statusDraft") }
+                        : { cls: "badge review", label: r.status };
+                  return (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 600 }}>{r.title}</td>
                     <td>
-                      <span className={`badge ${r.status === "open" ? "ok" : "review"}`}>{r.status}</span>
+                      <span className={chip.cls}>{chip.label}</span>
                     </td>
                     <td>
                       <Link to={`/tender/${r.id}`} className="link-button link-button--ghost link-button--compact">
@@ -206,7 +214,8 @@ export default function Dashboard() {
                       </Link>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -248,6 +257,7 @@ export default function Dashboard() {
                 type="button"
                 className="ghost"
                 data-testid="tenders-prev"
+                aria-label={t("workspace.ariaPrevPage")}
                 disabled={!canPrev}
                 onClick={() => setOffset(Math.max(0, offset - pageSize))}
               >
@@ -257,6 +267,7 @@ export default function Dashboard() {
                 type="button"
                 className="ghost"
                 data-testid="tenders-next"
+                aria-label={t("workspace.ariaNextPage")}
                 disabled={!canNext}
                 onClick={() => setOffset(offset + pageSize)}
               >

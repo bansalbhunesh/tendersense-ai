@@ -49,7 +49,7 @@ describe("Dashboard", () => {
     });
     renderDashboard();
     expect(await screen.findByText("Road resurfacing")).toBeInTheDocument();
-    expect(screen.getByText("open")).toBeInTheDocument();
+    expect(screen.getByText("Open")).toBeInTheDocument();
   });
 
   it("hides pagination when X-Total-Count header is absent", async () => {

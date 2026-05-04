@@ -142,6 +142,56 @@ export default function ReasoningGraph({
 
   const selectedEvidence = evidenceFromNode(selectedNode);
 
+  function edgeActive(e: Edge): boolean {
+    if (!selectedId) return true;
+    return e.from === selectedId || e.to === selectedId;
+  }
+
+  async function exportGraphPng() {
+    const svg = document.querySelector<SVGSVGElement>("[data-testid='reasoning-graph-svg']");
+    if (!svg) {
+      toast.error(t("graph.exportFailed"));
+      return;
+    }
+    try {
+      const xml = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("img"));
+        img.src = url;
+      });
+      const w = img.naturalWidth || Number(svg.getAttribute("width")) || 1200;
+      const h = img.naturalHeight || Number(svg.getAttribute("height")) || 800;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("ctx");
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => {
+        if (!b) {
+          toast.error(t("graph.exportFailed"));
+          return;
+        }
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(b);
+        a.download = "reasoning-graph.png";
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast.success(t("graph.exported"));
+      }, "image/png");
+    } catch {
+      toast.error(t("graph.exportFailed"));
+    }
+  }
+
   async function copyAsJson() {
     if (!selectedNode) return;
     const json = JSON.stringify(selectedNode, null, 2);
@@ -167,15 +217,36 @@ export default function ReasoningGraph({
       <div
         className="row"
         data-testid="reasoning-legend"
-        style={{ marginBottom: 12, gap: 14, fontSize: "0.8rem" }}
+        style={{ marginBottom: 12, gap: 14, fontSize: "0.8rem", flexWrap: "wrap" }}
       >
         <LegendDot color="#0891b2" label={t("graph.legendPass")} />
         <LegendDot color="#ef4444" label={t("graph.legendFail")} />
+        <LegendDot color="#2563eb" label={t("graph.legendReviewBlue")} />
         <LegendDot color="#f59e0b" label={t("graph.legendReview")} />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} className="muted">
+          <span
+            aria-hidden
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 4,
+              border: "2px solid rgba(148,163,184,0.6)",
+              display: "inline-block",
+            }}
+          />
+          {t("graph.legendBidder")}
+        </span>
       </div>
 
-      <div style={{ overflow: "auto", maxHeight: 620 }}>
+      <div className="row" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+        <button type="button" className="ghost" data-testid="reasoning-export-png" onClick={() => exportGraphPng()}>
+          {t("graph.exportPng")}
+        </button>
+      </div>
+
+      <div className="reasoning-graph-scroll">
         <svg
+          data-testid="reasoning-graph-svg"
           width="100%"
           viewBox={`0 0 ${width} ${height}`}
           height={Math.min(height, 620)}
@@ -192,13 +263,14 @@ export default function ReasoningGraph({
             const y2 = to.y + 28;
             const mid = x1 + (x2 - x1) * 0.55;
             const d = `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`;
+            const on = edgeActive(e);
             return (
               <path
                 key={`${e.from}-${e.to}-${i}`}
                 d={d}
                 fill="none"
-                stroke="rgba(148,163,184,0.55)"
-                strokeWidth="1.5"
+                stroke={on ? "rgba(148,163,184,0.75)" : "rgba(148,163,184,0.12)"}
+                strokeWidth={on ? 2.2 : 1}
               />
             );
           })}

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiFetchWithMeta, apiUpload } from "../api";
@@ -12,6 +12,13 @@ import ReasoningGraph from "../components/tender/ReasoningGraph";
 import RiskScorePanel from "../components/tender/RiskScorePanel";
 import { useToast } from "../components/shell/ToastProvider";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import AddCriterionForm from "../components/workspace/AddCriterionForm";
+import BidderDocChecklist, { BidderDocMobileSheet, type BidderDocRow } from "../components/workspace/BidderDocChecklist";
+import CriterionRow from "../components/workspace/CriterionRow";
+import FileDropZone from "../components/workspace/FileDropZone";
+import OnboardingProgress from "../components/workspace/OnboardingProgress";
+import WorkspaceSkeleton from "../components/workspace/WorkspaceSkeleton";
+import { DEMO_ACME_PDF_URL, DEMO_BETA_PDF_URL } from "../demo/demoPdfUrls";
 
 type Decision = Record<string, unknown> & {
   verdict?: string;
@@ -53,6 +60,30 @@ export default function TenderWorkspace() {
   const [resultsSearch, setResultsSearch] = useState("");
   const [contradictionModal, setContradictionModal] = useState<ConflictData | null>(null);
   const [justEvaled, setJustEvaled] = useState(false);
+  const [bidderDocuments, setBidderDocuments] = useState<Record<string, BidderDocRow[]>>({});
+  const [uploadingEvidence, setUploadingEvidence] = useState<{ bidderId: string; docType: string } | null>(null);
+  const [mobileSheet, setMobileSheet] = useState<{ id: string; name: string } | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [evalJobProgress, setEvalJobProgress] = useState<number | null>(null);
+  const evalPollAbortRef = useRef(false);
+  const bidderNameInputRef = useRef<HTMLInputElement>(null);
+
+  const loadBidderDocuments = useCallback(
+    async (bl: { id: string }[]) => {
+      const entries = await Promise.all(
+        bl.map(async (b) => {
+          try {
+            const d = (await apiFetch(`/tenders/${tenderId}/bidders/${b.id}/documents`)) as { documents: BidderDocRow[] };
+            return [b.id, d.documents || []] as const;
+          } catch {
+            return [b.id, []] as const;
+          }
+        }),
+      );
+      setBidderDocuments(Object.fromEntries(entries));
+    },
+    [tenderId],
+  );
 
   async function refresh(opts?: { silent?: boolean }): Promise<{ criteriaCount: number; bidderCount: number }> {
     if (!opts?.silent) setPageLoading(true);
@@ -70,6 +101,7 @@ export default function TenderWorkspace() {
       const bl = bRes.data?.bidders || [];
       setBidders(bl);
       setBidderTotal(bRes.totalCount);
+      await loadBidderDocuments(bl);
       if (r) {
         setResults({
           decisions: (r.decisions || []) as Decision[],
@@ -93,15 +125,12 @@ export default function TenderWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenderId, bidderOffset, bidderPageSize]);
 
-  async function uploadTenderDoc(e: FormEvent) {
-    e.preventDefault();
-    const input = (e.target as HTMLFormElement).elements.namedItem("file") as HTMLInputElement;
-    if (!input.files?.[0]) return;
+  async function uploadTenderFile(file: File) {
     setBusy(true);
     setMsg(null);
     setMsgType("info");
     const fd = new FormData();
-    fd.append("file", input.files[0]);
+    fd.append("file", file);
     try {
       const j = (await apiUpload(`/tenders/${tenderId}/documents`, fd)) as {
         ocr?: { text?: string; quality_score?: number };
@@ -131,6 +160,9 @@ export default function TenderWorkspace() {
           }),
         );
       }
+      if (extracted > 0) {
+        setTab("bidders");
+      }
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
@@ -143,6 +175,12 @@ export default function TenderWorkspace() {
 
   async function addBidder(e: FormEvent) {
     e.preventDefault();
+    const trimmed = bname.trim();
+    if (trimmed.length < 2) {
+      setNameError(t("workspace.nameErrorMin"));
+      return;
+    }
+    setNameError(null);
     setBusy(true);
     setMsg(null);
     setMsgType("info");
@@ -150,12 +188,13 @@ export default function TenderWorkspace() {
       await apiFetch(`/tenders/${tenderId}/bidders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: bname }),
+        body: JSON.stringify({ name: trimmed }),
       });
-      const previousName = bname;
+      const previousName = trimmed;
       setBname(`Bidder ${bidders.length + 2}`);
       toast.success(t("workspace.bidderRegistered", { name: previousName }));
       await refresh();
+      bidderNameInputRef.current?.focus();
     } catch (ex: unknown) {
       const message = ex instanceof Error ? ex.message : String(ex);
       setMsgType("error");
@@ -167,6 +206,7 @@ export default function TenderWorkspace() {
   }
 
   async function uploadBidderDoc(bidderId: string, file: File, docType: string) {
+    setUploadingEvidence({ bidderId, docType });
     setBusy(true);
     setMsg(null);
     setMsgType("info");
@@ -176,6 +216,7 @@ export default function TenderWorkspace() {
     try {
       await apiUpload(`/bidders/${bidderId}/documents`, fd);
       await refresh();
+      setMobileSheet(null);
       setMsg(t("workspace.bidderOcrComplete"));
       toast.success(t("workspace.bidderOcrComplete"));
     } catch (ex: unknown) {
@@ -183,6 +224,47 @@ export default function TenderWorkspace() {
       setMsgType("error");
       setMsg(message);
       toast.error(t("workspace.evidenceUploadFailed", { message }));
+    } finally {
+      setBusy(false);
+      setUploadingEvidence(null);
+    }
+  }
+
+  async function loadDemoBidders() {
+    setBusy(true);
+    try {
+      const r1 = (await apiFetch(`/tenders/${tenderId}/bidders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Demo Bidder Acme (eligible)" }),
+      })) as { id: string };
+      const r2 = (await apiFetch(`/tenders/${tenderId}/bidders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Demo Bidder Beta (conflict case)" }),
+      })) as { id: string };
+      const f1 = await fetch(DEMO_ACME_PDF_URL);
+      const f2 = await fetch(DEMO_BETA_PDF_URL);
+      const b1 = await f1.blob();
+      const b2 = await f2.blob();
+      await apiUpload(`/bidders/${r1.id}/documents`, (() => {
+        const fd = new FormData();
+        fd.append("file", new File([b1], "acme_demo.pdf", { type: "application/pdf" }));
+        fd.append("doc_type", "gst_certificate");
+        return fd;
+      })());
+      await apiUpload(`/bidders/${r2.id}/documents`, (() => {
+        const fd = new FormData();
+        fd.append("file", new File([b2], "beta_demo.pdf", { type: "application/pdf" }));
+        fd.append("doc_type", "itr");
+        return fd;
+      })());
+      await refresh();
+      toast.success(t("workspace.demoLoaded"));
+      setTab("run");
+    } catch (ex: unknown) {
+      const message = ex instanceof Error ? ex.message : String(ex);
+      toast.error(t("workspace.demoFailed", { message }));
     } finally {
       setBusy(false);
     }
@@ -218,13 +300,15 @@ export default function TenderWorkspace() {
     return m;
   }, [criteriaList]);
 
-  async function runEval() {
+  async function doRunEval() {
     const startedAt = Date.now();
     setBusy(true);
     setMsg(null);
     setMsgType("info");
     setEvalElapsed(0);
     setEvalRunning(true);
+    setEvalJobProgress(0);
+    evalPollAbortRef.current = false;
     try {
       const { criteriaCount, bidderCount } = await refresh({ silent: true });
       if (criteriaCount === 0) {
@@ -249,12 +333,24 @@ export default function TenderWorkspace() {
       let attempts = 0;
       let completed = false;
       while (attempts < 300) {
+        if (evalPollAbortRef.current) {
+          setMsgType("warning");
+          setMsg(t("workspace.evalPollStopped"));
+          setEvalRunning(false);
+          setEvalJobId(null);
+          setBusy(false);
+          return;
+        }
         attempts += 1;
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
         const st = (await apiFetch(`/tenders/${tenderId}/evaluate/jobs/${queued.job_id}`)) as {
           status: string;
           error?: string;
+          progress?: number;
         };
+        if (typeof st.progress === "number") {
+          setEvalJobProgress(st.progress);
+        }
         if (st.status === "completed") {
           completed = true;
           break;
@@ -281,8 +377,25 @@ export default function TenderWorkspace() {
     } finally {
       setEvalRunning(false);
       setEvalJobId(null);
+      setEvalJobProgress(null);
       setBusy(false);
     }
+  }
+
+  function runEval() {
+    if (results?.decisions?.length) {
+      toast.warning(t("workspace.reEvalWarning"), {
+        durationMs: 12000,
+        action: {
+          label: t("workspace.reEvalProceed"),
+          onClick: () => {
+            void doRunEval();
+          },
+        },
+      });
+      return;
+    }
+    void doRunEval();
   }
 
   useEffect(() => {
@@ -330,19 +443,6 @@ export default function TenderWorkspace() {
     return () => window.clearTimeout(ti);
   }, [msg]);
 
-  const matrix = useMemo(() => {
-    if (!results?.decisions?.length) return [];
-    const map = new Map<string, Record<string, Decision>>();
-    for (const raw of results.decisions) {
-      const d = raw as Decision;
-      const bid = String(d.bidder_id || "");
-      const cid = String(d.criterion_id || "");
-      if (!map.has(bid)) map.set(bid, {});
-      map.get(bid)![cid] = d;
-    }
-    return Array.from(map.entries());
-  }, [results]);
-
   const filteredDecisions = useMemo(() => {
     const needle = resultsSearch.trim().toLowerCase();
     return (results?.decisions || []).filter((d) => {
@@ -355,16 +455,159 @@ export default function TenderWorkspace() {
     });
   }, [results, resultsVerdictFilter, resultsSearch]);
 
+  const needsReviewCount = useMemo(
+    () => (results?.decisions || []).filter((d) => String(d.verdict) === "NEEDS_REVIEW").length,
+    [results],
+  );
+
+  const hasAnyBidderDoc = useMemo(
+    () => Object.values(bidderDocuments).some((rows) => rows.length > 0),
+    [bidderDocuments],
+  );
+
+  const eligibleBidderCount = useMemo(() => {
+    if (!results?.decisions?.length) return 0;
+    const scoreMap = new Map<
+      string,
+      { eligible: number; notEligible: number; needsReview: number; conflicts: number; total: number }
+    >();
+    for (const b of bidders) {
+      scoreMap.set(b.id, { eligible: 0, notEligible: 0, needsReview: 0, conflicts: 0, total: 0 });
+    }
+    for (const d of results.decisions) {
+      const bid = String((d as Decision).bidder_id || "");
+      const entry = scoreMap.get(bid);
+      if (!entry) continue;
+      entry.total++;
+      const v = String(d.verdict || "");
+      if (v === "ELIGIBLE") entry.eligible++;
+      else if (v === "NOT_ELIGIBLE") entry.notEligible++;
+      else entry.needsReview++;
+      if (String((d as Decision).reason) === "CONFLICT_DETECTED") entry.conflicts++;
+    }
+    let n = 0;
+    for (const [, s] of scoreMap) {
+      if (s.total === 0) continue;
+      if (s.conflicts > 0 || s.needsReview > 0) continue;
+      if (s.notEligible > 0) continue;
+      n++;
+    }
+    return n;
+  }, [results, bidders]);
+
+  const statusChip = useMemo(() => {
+    if (evalRunning) {
+      return { className: "status-chip status-chip--run", label: t("workspace.chipEvaluating") };
+    }
+    if (results?.decisions?.length) {
+      if (needsReviewCount > 0) {
+        return {
+          className: "status-chip status-chip--warn",
+          label: t("workspace.chipNeedsReview", { count: needsReviewCount }),
+        };
+      }
+      return {
+        className: "status-chip status-chip--ok",
+        label: t("workspace.chipEvaluated", { eligible: eligibleBidderCount, bidders: bidders.length }),
+      };
+    }
+    if (criteriaList.length && bidders.length && hasAnyBidderDoc) {
+      return { className: "status-chip status-chip--muted", label: t("workspace.chipReady") };
+    }
+    if (criteriaList.length) {
+      return { className: "status-chip status-chip--muted", label: t("workspace.chipCriteria") };
+    }
+    return { className: "status-chip status-chip--muted", label: t("workspace.chipDraft") };
+  }, [
+    evalRunning,
+    results,
+    needsReviewCount,
+    eligibleBidderCount,
+    bidders.length,
+    criteriaList.length,
+    hasAnyBidderDoc,
+    t,
+  ]);
+
+  const showOnboarding = !results?.decisions?.length;
+  const onboardingActiveStep = useMemo(() => {
+    if (criteriaList.length === 0) return 0;
+    if (bidders.length === 0) return 1;
+    if (!hasAnyBidderDoc) return 2;
+    return 3;
+  }, [criteriaList.length, bidders.length, hasAnyBidderDoc]);
+
+  const onboardingSteps = useMemo(
+    () => [
+      {
+        id: "tender",
+        label: t("workspace.onboard.tender"),
+        done: criteriaList.length > 0,
+        tooltip: t("workspace.onboard.tenderTip"),
+      },
+      {
+        id: "bidders",
+        label: t("workspace.onboard.bidders"),
+        done: bidders.length > 0,
+        tooltip: t("workspace.onboard.biddersTip"),
+      },
+      {
+        id: "docs",
+        label: t("workspace.onboard.evidence"),
+        done: hasAnyBidderDoc,
+        tooltip: t("workspace.onboard.evidenceTip"),
+      },
+      {
+        id: "evaluate",
+        label: t("workspace.onboard.evaluate"),
+        done: results?.decisions != null && results.decisions.length > 0,
+        tooltip: t("workspace.onboard.evaluateTip"),
+      },
+    ],
+    [t, criteriaList.length, bidders.length, hasAnyBidderDoc, results],
+  );
+
+  const evidenceTypes = useMemo(
+    () => [
+      { key: "ca_certificate", label: t("workspace.docCa") },
+      { key: "gst_certificate", label: t("workspace.docGst") },
+      { key: "audited_balance_sheet", label: t("workspace.docBalance") },
+      { key: "itr", label: t("workspace.docItr") },
+      { key: "iso_certificate", label: t("workspace.docIso") },
+      { key: "work_order", label: t("workspace.docWorkOrder") },
+      { key: "experience_letters", label: t("workspace.docExperience") },
+      { key: "bank_statement", label: t("workspace.docBank") },
+      { key: "technical_brochure", label: t("workspace.docTechBrochure") },
+    ],
+    [t],
+  );
+
+  const evalEstimateSec = Math.max(30, Math.round(criteriaList.length * bidders.length * 1.2));
+
+  const tabLabels: Record<"docs" | "bidders" | "run" | "results", string> = useMemo(
+    () => ({
+      docs:
+        criteriaList.length > 0
+          ? t("workspace.tabDocsCriteria", { count: criteriaList.length })
+          : t("workspace.tabDocsPending"),
+      bidders: t("workspace.tabBiddersCount", { count: bidders.length }),
+      run:
+        results?.decisions?.length && !evalRunning
+          ? t("workspace.tabRunDone")
+          : evalRunning
+            ? t("workspace.tabRunBusy")
+            : t("workspace.tabRun"),
+      results:
+        needsReviewCount > 0
+          ? t("workspace.tabResultsReview", { count: needsReviewCount })
+          : t("workspace.tabResults"),
+    }),
+    [t, criteriaList.length, bidders.length, results, needsReviewCount, evalRunning],
+  );
+
   const showBidderPagination = bidderTotal != null;
   const canBidderPrev = bidderOffset > 0;
   const canBidderNext = bidderTotal != null && bidderOffset + bidders.length < bidderTotal;
-
-  const tabLabels: Record<"docs" | "bidders" | "run" | "results", string> = {
-    docs: t("workspace.tabDocs"),
-    bidders: t("workspace.tabBidders"),
-    run: t("workspace.tabRun"),
-    results: t("workspace.tabResults"),
-  };
 
   return (
     <div className="shell">
@@ -375,6 +618,9 @@ export default function TenderWorkspace() {
               ← {t("common.back")}
             </Link>
             <strong className="page-title-inline">{String(tender?.title || t("workspace.fallbackTitle"))}</strong>
+            <span className={statusChip.className} title={String(tender?.status || "")}>
+              {statusChip.label}
+            </span>
           </>
         }
         actions={
@@ -385,6 +631,10 @@ export default function TenderWorkspace() {
             </Link>
         }
       />
+
+      {showOnboarding && (
+        <OnboardingProgress steps={onboardingSteps} activeIndex={onboardingActiveStep} />
+      )}
 
       <div className="tabs">
         {(["docs", "bidders", "run", "results"] as const).map((tk) => (
@@ -399,86 +649,91 @@ export default function TenderWorkspace() {
         ))}
       </div>
 
-      {pageLoading && (
-        <p className="muted" style={{ marginBottom: 12 }}>
-          {t("workspace.loading")}
-        </p>
-      )}
-
-      {msg && (
-        <div
-          className={`panel flash-banner ${
-            msgType === "error"
-              ? "flash-banner--error"
-              : msgType === "success"
-                ? "flash-banner--success"
-                : msgType === "warning"
-                  ? "flash-banner--warning"
-                  : "flash-banner--info"
-          }`}
-        >
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <span className="mono" data-testid="workspace-msg">
-              {msg}
-            </span>
-            <button className="ghost" type="button" onClick={() => setMsg(null)}>
-              {t("common.dismiss")}
-            </button>
-          </div>
+      {import.meta.env.DEV && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" className="ghost" style={{ fontSize: "0.75rem" }} disabled={busy} onClick={() => void loadDemoBidders()}>
+            {t("workspace.loadDemoBidders")}
+          </button>
         </div>
       )}
 
-      {tab === "docs" && (
-        <div className="panel">
-          <h2>{t("workspace.uploadTitle")}</h2>
-          <p className="muted">{t("workspace.uploadCopy")}</p>
-          <form onSubmit={uploadTenderDoc}>
-            <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg" />
-            <div style={{ height: 12 }} />
-            <button className="primary" disabled={busy} type="submit">
-              {t("workspace.uploadButton")}
-            </button>
-          </form>
-          <div style={{ height: 16 }} />
-          <h3>{t("workspace.extractedCriteria", { count: criteriaList.length })}</h3>
-          {criteriaList.map((raw, i) => {
-            const c = raw as Record<string, unknown>;
-            const id = String(c.id || "");
-            const field = String(c.field || "—");
-            const op = String(c.operator || "");
-            const val = c.value != null ? String(c.value) : "—";
-            const rawText = String(c.text_raw || "").slice(0, 280);
-            return (
-              <div key={id || i} className="nest-card">
-                <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
-                  <strong>{field}</strong>
-                  <span className="mono muted" style={{ fontSize: "0.75rem" }}>
-                    {id.slice(0, 8)}…
-                  </span>
-                </div>
-                <p className="muted" style={{ marginTop: 6, marginBottom: 4 }}>
-                  {op} <span className="mono">{val}</span>
-                  {String(c.unit || "") ? ` ${String(c.unit)}` : ""}
-                </p>
-                {rawText && (
-                  <p className="mono" style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                    {rawText}
-                    {String(c.text_raw || "").length > 280 ? "…" : ""}
-                  </p>
-                )}
+      {pageLoading ? (
+        <WorkspaceSkeleton />
+      ) : (
+        <>
+          {msg && (
+            <div
+              className={`panel flash-banner ${
+                msgType === "error"
+                  ? "flash-banner--error"
+                  : msgType === "success"
+                    ? "flash-banner--success"
+                    : msgType === "warning"
+                      ? "flash-banner--warning"
+                      : "flash-banner--info"
+              }`}
+            >
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <span className="mono" data-testid="workspace-msg">
+                  {msg}
+                </span>
+                <button
+                  className="ghost"
+                  type="button"
+                  aria-label={t("workspace.dismissNotification")}
+                  onClick={() => setMsg(null)}
+                >
+                  {t("common.dismiss")}
+                </button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          )}
+
+          {tab === "docs" && (
+            <div className="panel">
+              <h2>{t("workspace.uploadTitle")}</h2>
+              <p className="muted">{t("workspace.uploadCopy")}</p>
+              <FileDropZone busy={busy} maxMb={20} onFile={(file) => void uploadTenderFile(file)} disabled={busy} />
+              <div style={{ height: 16 }} />
+              <h3>{t("workspace.extractedCriteria", { count: criteriaList.length })}</h3>
+              {criteriaList.map((raw, i) => {
+                const c = raw as Record<string, unknown>;
+                const id = String(c.id || "");
+                return (
+                  <CriterionRow
+                    key={id || String(i)}
+                    tenderId={tenderId}
+                    raw={c}
+                    onChanged={() => refresh({ silent: true })}
+                  />
+                );
+              })}
+              <AddCriterionForm tenderId={tenderId} onAdded={() => refresh()} />
+            </div>
+          )}
 
       {tab === "bidders" && (
         <div className="grid2">
           <div className="panel">
             <h2>{t("workspace.registerBidder")}</h2>
             <form onSubmit={addBidder}>
-              <label>{t("workspace.legalName")}</label>
-              <input value={bname} onChange={(e) => setBname(e.target.value)} required />
+              <label htmlFor="bidder-name-input">{t("workspace.legalName")}</label>
+              <input
+                id="bidder-name-input"
+                ref={bidderNameInputRef}
+                value={bname}
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? "bidder-name-error" : undefined}
+                onChange={(e) => {
+                  setBname(e.target.value);
+                  if (nameError) setNameError(null);
+                }}
+              />
+              {nameError && (
+                <p id="bidder-name-error" className="auth-error" style={{ marginTop: 6, fontSize: "0.85rem" }}>
+                  {nameError}
+                </p>
+              )}
               <div style={{ height: 12 }} />
               <button className="primary" type="submit" disabled={busy}>
                 {t("workspace.addBidder")}
@@ -490,79 +745,23 @@ export default function TenderWorkspace() {
             <p className="muted">{t("workspace.evidenceCopy")}</p>
             {bidders.map((b) => (
               <div key={b.id} style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                <div style={{ fontWeight: 700 }}>{b.name}</div>
-                <div className="row" style={{ marginTop: 8 }}>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docCa")}
-                    <input
-                      type="file"
-                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "ca_certificate")}
-                    />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docGst")}
-                    <input
-                      type="file"
-                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "gst_certificate")}
-                    />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docBalance")}
-                    <input
-                      type="file"
-                      onChange={(e) =>
-                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "audited_balance_sheet")
-                      }
-                    />
-                  </label>
+                <div className="bidder-evidence-desktop">
+                  <BidderDocChecklist
+                    bidderId={b.id}
+                    bidderName={b.name}
+                    types={evidenceTypes}
+                    documents={bidderDocuments[b.id] || []}
+                    uploading={uploadingEvidence}
+                    onPick={(docType, file) => void uploadBidderDoc(b.id, file, docType)}
+                  />
                 </div>
-                <div className="row" style={{ marginTop: 8 }}>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docItr")}
-                    <input type="file" onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "itr")} />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docIso")}
-                    <input
-                      type="file"
-                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "iso_certificate")}
-                    />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docWorkOrder")}
-                    <input
-                      type="file"
-                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "work_order")}
-                    />
-                  </label>
-                </div>
-                <div className="row" style={{ marginTop: 8 }}>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docExperience")}
-                    <input
-                      type="file"
-                      onChange={(e) =>
-                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "experience_letters")
-                      }
-                    />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docBank")}
-                    <input
-                      type="file"
-                      onChange={(e) => e.target.files && uploadBidderDoc(b.id, e.target.files[0], "bank_statement")}
-                    />
-                  </label>
-                  <label style={{ flex: 1 }}>
-                    {t("workspace.docTechBrochure")}
-                    <input
-                      type="file"
-                      onChange={(e) =>
-                        e.target.files && uploadBidderDoc(b.id, e.target.files[0], "technical_brochure")
-                      }
-                    />
-                  </label>
-                </div>
+                <button
+                  type="button"
+                  className="ghost bidder-evidence-mobile-btn"
+                  onClick={() => setMobileSheet({ id: b.id, name: b.name })}
+                >
+                  {t("workspace.mobileUploadEvidence")}
+                </button>
               </div>
             ))}
             {bidders.length === 0 && <p className="muted">{t("workspace.addAtLeastOne")}</p>}
@@ -604,6 +803,7 @@ export default function TenderWorkspace() {
                     type="button"
                     className="ghost"
                     data-testid="bidders-prev"
+                    aria-label={t("workspace.ariaPrevPage")}
                     disabled={!canBidderPrev}
                     onClick={() => setBidderOffset(Math.max(0, bidderOffset - bidderPageSize))}
                   >
@@ -613,6 +813,7 @@ export default function TenderWorkspace() {
                     type="button"
                     className="ghost"
                     data-testid="bidders-next"
+                    aria-label={t("workspace.ariaNextPage")}
                     disabled={!canBidderNext}
                     onClick={() => setBidderOffset(bidderOffset + bidderPageSize)}
                   >
@@ -633,32 +834,143 @@ export default function TenderWorkspace() {
             done={results !== null && !evalRunning}
             criteriaCount={criteriaList.length}
             bidderCount={bidders.length}
+            jobProgress={evalJobProgress}
           />
           <div className="panel">
-          <h2>{t("workspace.evaluateAll")}</h2>
-          <p className="muted">{t("workspace.evaluateCopy")}</p>
-          <p className="muted" style={{ marginTop: 8 }}>
-            {t("workspace.criteriaBidders", { criteria: criteriaList.length, bidders: bidders.length })}
-          </p>
-          <button data-testid="run-evaluate" className="primary" disabled={busy} onClick={runEval}>
-            {evalRunning
-              ? t("workspace.running")
-              : busy
-                ? t("workspace.checkingPrereqs")
-                : t("workspace.runDecisionEngine")}
-          </button>
-          {evalRunning && (
+            <h2>{t("workspace.evaluateAll")}</h2>
+            <p className="muted">{t("workspace.evaluateCopy")}</p>
             <p className="muted" style={{ marginTop: 8 }}>
-              {t("workspace.elapsed", { elapsed: evalElapsed })}
+              {t("workspace.criteriaBidders", { criteria: criteriaList.length, bidders: bidders.length })}
             </p>
-          )}
-          {evalRunning && evalJobId && (
-            <p className="mono muted" style={{ marginTop: 4 }}>
-              {t("workspace.jobLabel", { job: evalJobId })}
+            <p className="muted" style={{ marginTop: 6, fontSize: "0.85rem" }}>
+              {t("workspace.evalEta", { seconds: evalEstimateSec })}
             </p>
-          )}
-        </div>
+            <button data-testid="run-evaluate" className="primary" disabled={busy} onClick={runEval}>
+              {evalRunning
+                ? t("workspace.running")
+                : busy
+                  ? t("workspace.checkingPrereqs")
+                  : t("workspace.runDecisionEngine")}
+            </button>
+            {evalRunning && (
+              <div className="row" style={{ marginTop: 12, gap: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    evalPollAbortRef.current = true;
+                  }}
+                >
+                  {t("workspace.evalStopWaiting")}
+                </button>
+              </div>
+            )}
+            {evalRunning && (
+              <p className="muted" style={{ marginTop: 8 }}>
+                {t("workspace.elapsed", { elapsed: evalElapsed })}
+              </p>
+            )}
+            {evalRunning && evalJobId && (
+              <p className="mono muted" style={{ marginTop: 4 }}>
+                {t("workspace.jobLabel", { job: evalJobId })}
+              </p>
+            )}
+          </div>
         </>
+      )}
+
+      {tab === "results" && (
+        <>
+          {!results?.decisions?.length ? (
+            <div className="panel" style={{ textAlign: "center", padding: "40px 24px" }}>
+              <div style={{ fontSize: "2rem", marginBottom: 8 }} aria-hidden>
+                ⚙️
+              </div>
+              <h2 style={{ margin: "0 0 8px" }}>{t("workspace.resultsEmptyTitle")}</h2>
+              <p className="muted" style={{ maxWidth: 440, margin: "0 auto 16px" }}>
+                {t("workspace.resultsEmptyBody")}
+              </p>
+              <button type="button" className="primary" onClick={() => setTab("run")}>
+                {t("workspace.resultsEmptyCta")}
+              </button>
+            </div>
+          ) : (
+            <>
+              <BidderScoreboard
+                decisions={results.decisions}
+                bidders={bidders}
+                criterionLabelById={criterionLabelById}
+              />
+              <RiskScorePanel decisions={results.decisions} />
+              <ContradictionAlert
+                decisions={results.decisions}
+                bidderNameMap={bidderNameMap}
+                criterionLabelById={criterionLabelById}
+              />
+              <div className="grid2">
+                <div className="panel">
+                  <h2>{t("workspace.verdictDetailSection")}</h2>
+                  <div className="row" style={{ marginBottom: 10 }}>
+                    <select
+                      value={resultsVerdictFilter}
+                      onChange={(e) =>
+                        setResultsVerdictFilter(
+                          e.target.value as "ALL" | "ELIGIBLE" | "NOT_ELIGIBLE" | "NEEDS_REVIEW",
+                        )
+                      }
+                      style={{ maxWidth: 220 }}
+                    >
+                      <option value="ALL">{t("workspace.verdictAll")}</option>
+                      <option value="ELIGIBLE">{t("workspace.verdictEligible")}</option>
+                      <option value="NOT_ELIGIBLE">{t("workspace.verdictNotEligible")}</option>
+                      <option value="NEEDS_REVIEW">{t("workspace.verdictNeedsReview")}</option>
+                    </select>
+                    <input
+                      placeholder={t("workspace.searchCriterion")}
+                      value={resultsSearch}
+                      onChange={(e) => setResultsSearch(e.target.value)}
+                      style={{ minWidth: 260 }}
+                    />
+                  </div>
+                  <h3 style={{ marginTop: 8 }}>{t("workspace.criterionDetail")}</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                    {filteredDecisions.map((d, idx) => {
+                      const dd = d as Decision;
+                      const cid = String(dd.criterion_id || "");
+                      const critTitle = criterionLabelById.get(cid) || cid;
+                      return (
+                        <div
+                          key={idx}
+                          className="decision-card-enter"
+                          style={{ animationDelay: `${idx * 0.06}s` }}
+                        >
+                          <DecisionCard decision={dd} criterionLabel={critTitle} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="panel">
+                  <h2>{t("workspace.reasoningGraph")}</h2>
+                  <ReasoningGraph graph={results.graph as { nodes: []; edges: [] } | null} />
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+        </>
+      )}
+
+      {mobileSheet && (
+        <BidderDocMobileSheet
+          open
+          bidderName={mobileSheet.name}
+          types={evidenceTypes}
+          busy={!!uploadingEvidence}
+          onClose={() => setMobileSheet(null)}
+          onUpload={(docType, file) => void uploadBidderDoc(mobileSheet.id, file, docType)}
+        />
       )}
 
       {contradictionModal && (
@@ -670,101 +982,6 @@ export default function TenderWorkspace() {
           }}
           onDismiss={() => setContradictionModal(null)}
         />
-      )}
-
-      {tab === "results" && (
-        <>
-          <BidderScoreboard
-            decisions={results?.decisions ?? []}
-            bidders={bidders}
-          />
-          <RiskScorePanel decisions={results?.decisions ?? []} />
-          <ContradictionAlert
-            decisions={results?.decisions ?? []}
-            bidderNameMap={bidderNameMap}
-            criterionLabelById={criterionLabelById}
-          />
-          <div className="grid2">
-          <div className="panel">
-            <h2>{t("workspace.verdictMatrix")}</h2>
-            <div className="row" style={{ marginBottom: 10 }}>
-              <select
-                value={resultsVerdictFilter}
-                onChange={(e) =>
-                  setResultsVerdictFilter(
-                    e.target.value as "ALL" | "ELIGIBLE" | "NOT_ELIGIBLE" | "NEEDS_REVIEW",
-                  )
-                }
-                style={{ maxWidth: 220 }}
-              >
-                <option value="ALL">{t("workspace.verdictAll")}</option>
-                <option value="ELIGIBLE">{t("workspace.verdictEligible")}</option>
-                <option value="NOT_ELIGIBLE">{t("workspace.verdictNotEligible")}</option>
-                <option value="NEEDS_REVIEW">{t("workspace.verdictNeedsReview")}</option>
-              </select>
-              <input
-                placeholder={t("workspace.searchCriterion")}
-                value={resultsSearch}
-                onChange={(e) => setResultsSearch(e.target.value)}
-                style={{ minWidth: 260 }}
-              />
-            </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t("workspace.tableBidder")}</th>
-                  <th>{t("workspace.tableSummary")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matrix.map(([bid, byC]) => {
-                  const vals = Object.values(byC);
-                  const eligible = vals.filter((v) => v.verdict === "ELIGIBLE").length;
-                  const review = vals.filter((v) => v.verdict === "NEEDS_REVIEW").length;
-                  const notEligible = vals.filter((v) => v.verdict === "NOT_ELIGIBLE").length;
-                  const bidderLabel = bidderNameMap.get(bid) || `${bid.slice(0, 8)}…`;
-                  return (
-                    <tr key={bid}>
-                      <td title={bid}>
-                        <span style={{ fontWeight: 600 }}>{bidderLabel}</span>
-                      </td>
-                      <td>
-                        {t("workspace.summaryLine", {
-                          eligible,
-                          notEligible,
-                          review,
-                          total: vals.length,
-                        })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <h3 style={{ marginTop: 16 }}>{t("workspace.criterionDetail")}</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
-              {filteredDecisions.map((d, idx) => {
-                const dd = d as Decision;
-                const cid = String(dd.criterion_id || "");
-                const critTitle = criterionLabelById.get(cid) || cid;
-                return (
-                  <div
-                    key={idx}
-                    className="decision-card-enter"
-                    style={{ animationDelay: `${idx * 0.06}s` }}
-                  >
-                    <DecisionCard decision={dd} criterionLabel={critTitle} />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="panel">
-            <h2>{t("workspace.reasoningGraph")}</h2>
-            <ReasoningGraph graph={results?.graph as { nodes: []; edges: [] } | null} />
-          </div>
-        </div>
-        </>
       )}
     </div>
   );

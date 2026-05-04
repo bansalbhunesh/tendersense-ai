@@ -169,3 +169,50 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusCreated, gin.H{"document_id": docID, "ocr": ocrRes})
 	}
 }
+
+// ListBidderDocuments returns uploaded documents for a bidder in the tender workspace.
+func ListBidderDocuments(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tenderID := c.Param("id")
+		bid := c.Param("bid")
+		if !RequireTenderOwner(db, c, tenderID) {
+			return
+		}
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM bidders WHERE id=$1 AND tender_id=$2`, bid, tenderID).Scan(&n); err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
+		if n == 0 {
+			util.NotFound(c, "bidder not found")
+			return
+		}
+		rows, err := db.Query(
+			`SELECT id::text, filename, COALESCE(doc_type,''), created_at, COALESCE(quality_score,0)
+			 FROM documents WHERE owner_type='bidder' AND owner_id=$1::uuid ORDER BY doc_type NULLS LAST, created_at DESC`,
+			bid,
+		)
+		if err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
+		defer rows.Close()
+		out := make([]map[string]any, 0)
+		for rows.Next() {
+			var id, filename, docType string
+			var created interface{}
+			var qs float64
+			if err := rows.Scan(&id, &filename, &docType, &created, &qs); err != nil {
+				continue
+			}
+			out = append(out, map[string]any{
+				"id": id, "filename": filename, "doc_type": docType, "created_at": created, "quality_score": qs,
+			})
+		}
+		if err := rows.Err(); err != nil {
+			util.InternalError(c, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"documents": out})
+	}
+}

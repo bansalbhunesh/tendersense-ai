@@ -599,7 +599,13 @@ export default function ContradictionModal({
             >
               View Full Analysis →
             </button>
-            <button type="button" className="ghost" onClick={onDismiss} style={{ flexShrink: 0 }}>
+            <button
+              type="button"
+              className="ghost"
+              aria-label="Dismiss contradiction alert"
+              onClick={onDismiss}
+              style={{ flexShrink: 0 }}
+            >
               Dismiss
             </button>
           </div>

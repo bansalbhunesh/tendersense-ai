@@ -164,18 +164,26 @@ export default function EvaluationPipeline({
   done,
   criteriaCount,
   bidderCount,
+  jobProgress,
 }: {
   running: boolean;
   elapsed: number;
   done: boolean;
   criteriaCount: number;
   bidderCount: number;
+  /** 0–100 from evaluation job API when available */
+  jobProgress?: number | null;
 }) {
   const activeIdx = running
-    ? STAGES.reduce((acc, s, i) => (elapsed >= s.fromSec ? i : acc), 0)
+    ? jobProgress != null && jobProgress > 0
+      ? Math.min(
+          STAGES.length - 1,
+          Math.floor((jobProgress / 100) * STAGES.length),
+        )
+      : STAGES.reduce((acc, s, i) => (elapsed >= s.fromSec ? i : acc), 0)
     : done
-    ? STAGES.length
-    : -1;
+      ? STAGES.length
+      : -1;
 
   const stageStatus = (i: number): Status => {
     if (!running && !done) return "pending";

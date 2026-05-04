@@ -322,6 +322,13 @@ function NotEligibleCard({
         </p>
       )}
 
+      {snap?.evidence_quote && (
+        <blockquote className="evidence-quote">
+          &ldquo;{snap.evidence_quote}&rdquo;
+          {snap.document && <cite>— {snap.document}</cite>}
+        </blockquote>
+      )}
+
       <div>
         <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           AI Confidence
