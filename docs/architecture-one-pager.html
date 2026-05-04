@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TenderSense AI — Architecture (one page)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0f1419;
+      --muted: #5c6b7a;
+      --paper: #fafbfc;
+      --card: #ffffff;
+      --accent: #2563eb;
+      --accent2: #7c3aed;
+      --mint: #059669;
+      --amber: #d97706;
+      --rose: #e11d48;
+      --line: rgba(15, 20, 25, 0.12);
+      --glow: rgba(37, 99, 235, 0.15);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, var(--glow), transparent 55%),
+                  radial-gradient(900px 500px at 100% 0%, rgba(124, 58, 237, 0.12), transparent 50%),
+                  var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    .sheet {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px 32px 36px;
+    }
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 18px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(105deg, var(--ink) 0%, #1e3a5f 40%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .tagline {
+      margin: 6px 0 0;
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-width: 420px;
+      line-height: 1.45;
+    }
+    .badge {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem;
+      font-weight: 500;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #eff6ff, #f5f3ff);
+      border: 1px solid var(--line);
+      color: #3730a3;
+      white-space: nowrap;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 18px;
+      align-items: stretch;
+    }
+    @media (max-width: 720px) {
+      .flow { grid-template-columns: 1fr; }
+    }
+    .lane-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin: 0 0 8px 4px;
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 8px 24px -12px rgba(15, 20, 25, 0.12);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      border-radius: 14px 0 0 14px;
+    }
+    .card.client::before { background: linear-gradient(180deg, var(--accent), #38bdf8); }
+    .card.api::before { background: linear-gradient(180deg, #1d4ed8, var(--accent2)); }
+    .card.data::before { background: linear-gradient(180deg, var(--mint), #10b981); }
+    .card.ai::before { background: linear-gradient(180deg, var(--amber), #f59e0b); }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .card ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .card li { margin: 2px 0; }
+    .mono {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.68rem;
+      color: #4338ca;
+      background: #f8fafc;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .arrows {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 14px;
+      padding: 10px 12px;
+      margin: 4px 0 8px;
+      background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.06), transparent);
+      border-radius: 12px;
+      border: 1px dashed var(--line);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .arrows strong { color: var(--ink); font-weight: 600; }
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 720px) {
+      .row2 { grid-template-columns: 1fr; }
+    }
+    .security {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 50%, #f0fdf4 100%);
+      border: 1px solid var(--line);
+      font-size: 0.74rem;
+      line-height: 1.55;
+      color: #44403c;
+    }
+    .security h4 {
+      margin: 0 0 8px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #92400e;
+    }
+    footer {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      font-size: 0.68rem;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .print-hint {
+      font-size: 0.72rem;
+      color: var(--muted);
+      background: #f1f5f9;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      border: 1px solid var(--line);
+    }
+    .print-hint kbd {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      background: #fff;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+    }
+
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body {
+        background: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .print-hint { display: none !important; }
+      .sheet { max-width: none; padding: 0; }
+      .card { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <p class="print-hint">
+      <strong>Save as one-page PDF:</strong> Open this file in Chrome or Edge →
+      <kbd>Ctrl</kbd>+<kbd>P</kbd> → Destination <strong>Save as PDF</strong> → Layout <strong>Landscape</strong> (recommended) → Margins <strong>Default</strong> → Save.
+    </p>
+
+    <header>
+      <div>
+        <h1>TenderSense AI — System architecture</h1>
+        <p class="tagline">
+          Explainable tender evaluation: OCR + criteria extraction → rule engine + optional LLM →
+          officer UI, review queue, and hash-chained audit trail.
+        </p>
+      </div>
+      <span class="badge">MIT · monorepo · 3 services</span>
+    </header>
+
+    <div class="flow">
+      <div>
+        <p class="lane-title">Experience</p>
+        <div class="stack">
+          <div class="card client">
+            <h3>Frontend — Vite · React 18 · TypeScript</h3>
+            <ul>
+              <li>Dashboard, tender workspace, <strong>reasoning graph</strong> (SVG)</li>
+              <li>Review queue, audit log, i18n (EN / हिं)</li>
+              <li>JWT access + <strong>HttpOnly refresh</strong> cookie to API</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="lane-title">Control plane</p>
+        <div class="stack">
+          <div class="card api">
+            <h3>Backend — Go · Gin · PostgreSQL</h3>
+            <ul>
+              <li>Auth (rotation, JTI denylist, <span class="mono">access_token_version</span>), RBAC, rate limits</li>
+              <li>Tenders / bidders / documents / criteria CRUD</li>
+              <li>Async <strong>evaluation_jobs</strong> + worker → AI service</li>
+              <li>Optional <strong>MinIO/S3</strong> presigned URLs, security headers</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrows">
+        <span><strong>HTTPS</strong> + Bearer · CORS via <code>ALLOWED_ORIGINS</code></span>
+        <span aria-hidden="true">→</span>
+        <span><strong>REST</strong> <span class="mono">/api/v1/*</span></span>
+        <span aria-hidden="true">→</span>
+        <span><strong>SQL</strong> + migrations</span>
+      </div>
+
+      <div>
+        <p class="lane-title">Data &amp; cache</p>
+        <div class="stack">
+          <div class="card data">
+            <h3>PostgreSQL · Redis (optional)</h3>
+            <ul>
+              <li>Tenders, criteria, decisions, documents, users, refresh tokens</li>
+              <li>Redis: eval rate limits, JTI cache, session role/TV cache</li>
+              <li>Shared <span class="mono">DATA_DIR</span> with AI for uploads (or S3 mirror)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="lane-title">Intelligence</p>
+        <div class="stack">
+          <div class="card ai">
+            <h3>AI service — FastAPI · Python 3.12</h3>
+            <ul>
+              <li><strong>OCR</strong> pipeline (pdfplumber / Tesseract / optional Paddle)</li>
+              <li><strong>/v1/extract-criteria</strong>, <strong>/v1/evaluate</strong> decision engine</li>
+              <li>Optional <strong>Anthropic / Groq</strong>; sovereign <span class="mono">LLM_BACKEND=disabled</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row2" style="margin-top:14px">
+      <div class="security">
+        <h4>Security &amp; trust (summary)</h4>
+        Short-lived access JWTs · rotating refresh (DB + HttpOnly cookie) · JTI revocation + cleanup ·
+        password reset / logout-all bumps token version · Redis-backed limits · paginated decisions with
+        <span class="mono">X-Total-Count</span> — see <span class="mono">docs/SECURITY.md</span>.
+      </div>
+      <div class="security" style="background:linear-gradient(135deg,#f8fafc,#f1f5f9);">
+        <h4 style="color:#334155">Deployment sketch</h4>
+        Vercel / static CDN → API (Fly or Render) → managed Postgres + Redis → separate <strong>AI_SERVICE_URL</strong>
+        worker · optional object store for document mirror and presign.
+      </div>
+    </div>
+
+    <footer>
+      <span><strong>TenderSense AI</strong> — architecture one-pager (HTML). Repo: github.com/bansalbhunesh/tendersense-ai</span>
+      <span>Generated for submission / judge handout · not a live endpoint</span>
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,41 @@
+%% TenderSense AI — Mermaid source (paste into https://mermaid.live or GitHub markdown)
+%% For a richer visual, use architecture-one-pager.html → Print → PDF
+
+flowchart TB
+  subgraph client[" "]
+    FE["🖥 Frontend<br/>Vite · React · TS"]
+  end
+
+  subgraph api[" "]
+    BE["⚙ Backend<br/>Go · Gin"]
+  end
+
+  subgraph data[" "]
+    PG[("PostgreSQL<br/>tenders · decisions · jobs")]
+    RD["Redis<br/>rate limits · JTI cache"]
+  end
+
+  subgraph ai[" "]
+    PY["🐍 AI service<br/>FastAPI"]
+  end
+
+  subgraph ext[" "]
+    LLM["☁ Optional LLM<br/>Anthropic / Groq"]
+    S3["📦 Optional S3 / MinIO"]
+  end
+
+  FE -->|"HTTPS + JWT"| BE
+  BE --> PG
+  BE --> RD
+  BE -->|"AI_SERVICE_URL"| PY
+  PY --> LLM
+  BE --> S3
+  PY -.->|"presign / mirror"| S3
+
+  style FE fill:#e0ecff,stroke:#2563eb
+  style BE fill:#ede9fe,stroke:#7c3aed
+  style PG fill:#d1fae5,stroke:#059669
+  style RD fill:#fef3c7,stroke:#d97706
+  style PY fill:#ffedd5,stroke:#ea580c
+  style LLM fill:#f1f5f9,stroke:#64748b
+  style S3 fill:#f1f5f9,stroke:#64748b
