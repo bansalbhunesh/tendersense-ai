@@ -104,7 +104,7 @@ def normalize_inr_from_text(text: str) -> list[tuple[float, float, str]]:
         elif "lakh" in unit or "lac" in unit:
             v *= 1e5
         elif "million" in unit:
-            v *= 1e7
+            v *= 1e6  # 1 million INR = 10 lakh, not 1 crore
         out.append((v, 0.9, m.group(0)))
     for m in re.finditer(r"turnover[^\d]{0,40}([\d,]{4,})", text, re.I):
         raw = m.group(1).replace(",", "")

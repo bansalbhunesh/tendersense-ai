@@ -37,7 +37,8 @@ def test_unknown_extension_returns_empty(tmp_path):
 
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="tesseract binary not installed")
 def test_image_ocr_path(tmp_path):
-    """Render text into an image, then OCR it. Skipped when tesseract missing."""
+    """Render text into an image, then OCR it. Skipped when tesseract or OpenCV missing."""
+    pytest.importorskip("cv2")
     from PIL import Image, ImageDraw, ImageFont
 
     img = Image.new("RGB", (800, 200), color="white")

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,8 @@ const requestIDKey = "request_id"
 // RequestObservability injects request IDs and emits structured request logs.
 func RequestObservability() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rid := c.GetHeader("X-Request-ID")
-		if rid == "" {
+		rid := strings.TrimSpace(c.GetHeader("X-Request-ID"))
+		if rid == "" || uuid.Validate(rid) != nil {
 			rid = uuid.NewString()
 		}
 		c.Set(requestIDKey, rid)

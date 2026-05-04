@@ -215,6 +215,13 @@ func ForgotPassword(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		expiresAt := time.Now().Add(15 * time.Minute)
+		if _, err := db.Exec(
+			`UPDATE password_reset_tokens SET used=true WHERE email=$1 AND used=false`,
+			req.Email,
+		); err != nil {
+			util.InternalError(c, "failed to invalidate prior reset tokens")
+			return
+		}
 		_, err = db.Exec(
 			`INSERT INTO password_reset_tokens (email, token, expires_at, used) VALUES ($1,$2,$3,false)`,
 			req.Email, token, expiresAt,

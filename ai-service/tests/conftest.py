@@ -43,8 +43,11 @@ def tmp_data_dir(tmp_path, monkeypatch) -> Path:
 
 def _build_synthetic_pdf(path: Path, body: str) -> Path:
     """Render a tiny single-page PDF containing `body` text using reportlab."""
-    from reportlab.lib.pagesizes import LETTER
-    from reportlab.pdfgen import canvas
+    try:
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.pdfgen import canvas
+    except ImportError as e:  # pragma: no cover — dev dep; CI minimal envs skip PDF synthesis
+        pytest.skip(f"reportlab not installed (pip install -r requirements-dev.txt): {e}")
 
     c = canvas.Canvas(str(path), pagesize=LETTER)
     width, height = LETTER

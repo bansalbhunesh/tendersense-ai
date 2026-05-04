@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +32,10 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using platform environment variables")
 	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("GIN_MODE")), "release") &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_INSECURE_RESET_TOKEN_RESPONSE")), "true") {
+		log.Fatal("ALLOW_INSECURE_RESET_TOKEN_RESPONSE must not be true when GIN_MODE=release")
+	}
 	config.ValidateCoreSecrets()
 	appCfg, err := config.LoadApp()
 	if err != nil {
@@ -43,18 +48,15 @@ func main() {
 	}
 	defer database.Close()
 
-	// 1. Initialize repository
-	repo := repository.NewTenderRepository(database)
-
-	// 2. Initialize services
-	tenderService := service.NewTenderService(repo)
-
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("Critical Error: Migration failed: %v", err)
 	}
 	if err := db.RecoverInterruptedJobs(database); err != nil {
 		log.Printf("warning: failed to recover interrupted evaluation jobs: %v", err)
 	}
+
+	repo := repository.NewTenderRepository(database)
+	tenderService := service.NewTenderService(repo)
 
 	// Gin writes its access + recovery logs to gin.DefaultWriter /
 	// gin.DefaultErrorWriter; redact both before they hit stdout/stderr.

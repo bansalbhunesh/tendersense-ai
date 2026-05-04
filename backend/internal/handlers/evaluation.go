@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -96,6 +98,18 @@ func runEvaluationJob(svc service.TenderService, db *sql.DB, jobID, tenderID, us
 	// Detached context: the HTTP handler returned long before this fires.
 	ctx, cancel := context.WithTimeout(context.Background(), 17*time.Minute)
 	defer cancel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf(`{"event":"eval_job_panic","job_id":%q,"tender_id":%q,"panic":%q,"stack":%q}`,
+				jobID, tenderID, fmt.Sprint(r), string(debug.Stack()))
+			if _, err := db.ExecContext(context.Background(),
+				`UPDATE evaluation_jobs SET status=$1, error=$2, updated_at=now() WHERE id=$3`,
+				jobStatusFailed, "internal error during evaluation", jobID); err != nil {
+				log.Printf(`{"event":"eval_job_update_failed","job_id":%q,"stage":"panic","err":%q}`, jobID, err.Error())
+			}
+		}
+	}()
 
 	if _, err := db.ExecContext(ctx,
 		`UPDATE evaluation_jobs SET status=$1, progress=$2, updated_at=now() WHERE id=$3`,

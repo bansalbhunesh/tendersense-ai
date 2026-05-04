@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.decision_engine import evaluate_criterion, run_evaluation
+from app.decision_engine import evaluate_criterion, normalize_inr_from_text, run_evaluation
 
 
 def _ocr_doc(doc_id, doc_type, filename, text, q=0.95):
@@ -30,6 +30,18 @@ def _crit(**kw):
     }
     base.update(kw)
     return base
+
+
+# ---------------------------------------------------------------------------
+# INR parsing
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_inr_million_is_ten_lakh_not_crore():
+    """1 million INR = 1e6 rupees (audit: must not use crore-scale 1e7)."""
+    out = normalize_inr_from_text("Bidder turnover ₹5 million as per audited accounts.")
+    assert out
+    assert abs(out[0][0] - 5e6) < 1.0, out[0]
 
 
 # ---------------------------------------------------------------------------

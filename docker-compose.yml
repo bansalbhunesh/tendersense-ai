@@ -29,16 +29,22 @@ services:
 
   ai-service:
     build: ./ai-service
+    mem_limit: 3g
     restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_MODEL=claude-sonnet-4-20250514
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - DATA_DIR=/app/data/uploads
       - REDIS_URL=redis://redis:6379/0
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - EVALUATE_CACHE_TTL_SECONDS=${EVALUATE_CACHE_TTL_SECONDS:-900}
+      - OCR_CACHE_TTL_SECONDS=${OCR_CACHE_TTL_SECONDS:-86400}
+      - CRITERIA_CACHE_TTL_SECONDS=${CRITERIA_CACHE_TTL_SECONDS:-7200}
+      - GIT_SHA=${GIT_SHA:-}
       # Bharat-first: language and sovereign-mode controls
       - LLM_BACKEND=${LLM_BACKEND:-anthropic}
       - TRANSLATION_BACKEND=${TRANSLATION_BACKEND:-disabled}
@@ -67,9 +73,15 @@ services:
       - DATABASE_URL=postgres://tendersense:tendersense@db:5432/tendersense?sslmode=disable
       - AI_SERVICE_URL=http://ai-service:8081
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+      - ALLOWED_ORIGIN_REGEX=${ALLOWED_ORIGIN_REGEX:-}
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8080
       - DATA_DIR=/app/data/uploads
+      - GIT_SHA=${GIT_SHA:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESET_EMAIL_FROM=${RESET_EMAIL_FROM:-}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:5173}
+      - ALLOW_INSECURE_RESET_TOKEN_RESPONSE=${ALLOW_INSECURE_RESET_TOKEN_RESPONSE:-false}
     depends_on:
       db:
         condition: service_healthy

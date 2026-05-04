@@ -116,6 +116,8 @@ func Migrate(db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_decisions_tender_bidder ON decisions(tender_id, bidder_id);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_decisions_tender_bidder_criterion
+			ON decisions(tender_id, bidder_id, criterion_id);`,
 
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id BIGSERIAL PRIMARY KEY,

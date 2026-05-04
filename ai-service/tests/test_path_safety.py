@@ -37,8 +37,12 @@ def test_traversal_rejected(tmp_data_dir, monkeypatch):
 
 def test_absolute_outside_root_rejected(tmp_data_dir, monkeypatch):
     main_mod = _import_main(monkeypatch, tmp_data_dir)
+    # Use a path on the same volume but outside DATA_DIR — portable (Unix + Windows).
+    # ``/etc/passwd`` is unreliable on Windows (Git MSYS may map it under a real file).
+    dr = os.path.realpath(str(tmp_data_dir))
+    outside = os.path.join(os.path.dirname(dr), f"_tendersense_forbidden_{os.getpid()}.txt")
     with pytest.raises(HTTPException) as excinfo:
-        main_mod.validate_path("/etc/passwd")
+        main_mod.validate_path(outside)
     assert excinfo.value.status_code == 403
 
 

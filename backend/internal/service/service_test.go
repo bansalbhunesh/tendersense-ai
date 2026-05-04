@@ -173,7 +173,7 @@ func TestTriggerEvaluation_FiltersInvalidAIRowsAndSavesValidOnes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if res.Decisions != 1 || res.DecisionsCount != 1 {
+	if res.Decisions != 1 {
 		t.Fatalf("expected one valid decision, got %+v", res)
 	}
 	if len(savedDecisions) != 1 {

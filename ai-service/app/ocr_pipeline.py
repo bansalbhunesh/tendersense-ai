@@ -11,10 +11,38 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Any
 
-import cv2
 import numpy as np
 import pdfplumber
 from PIL import Image
+
+_cv2_module: Any = None
+_cv2_import_failed: bool = False
+
+
+def _cv2() -> Any:
+    """Lazy OpenCV import so FastAPI (`main`) loads in minimal test envs without cv2.
+
+    Raster OCR paths call this at runtime; install ``opencv-python-headless`` for full OCR.
+    """
+    global _cv2_module, _cv2_import_failed
+    if _cv2_import_failed:
+        raise RuntimeError(
+            "OpenCV (cv2) is required for scanned-PDF / image OCR. "
+            "Install: pip install opencv-python-headless"
+        )
+    if _cv2_module is not None:
+        return _cv2_module
+    try:
+        import cv2 as _cv2  # type: ignore[import-untyped]
+
+        _cv2_module = _cv2
+        return _cv2_module
+    except ImportError:
+        _cv2_import_failed = True
+        raise RuntimeError(
+            "OpenCV (cv2) is required for scanned-PDF / image OCR. "
+            "Install: pip install opencv-python-headless"
+        ) from None
 
 
 @dataclass
@@ -44,6 +72,7 @@ def _read_pdf_text(path: str) -> str:
 
 
 def _deskew(gray: np.ndarray) -> np.ndarray:
+    cv2 = _cv2()
     coords = np.column_stack(np.where(gray > 0))
     if coords.size < 10:
         return gray
@@ -60,6 +89,7 @@ def _deskew(gray: np.ndarray) -> np.ndarray:
 
 
 def _preprocess(image: np.ndarray) -> np.ndarray:
+    cv2 = _cv2()
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
@@ -133,6 +163,7 @@ def _paddle_ocr_image(path: str) -> tuple[str, float, list[dict[str, Any]]]:
 def _tesseract_image(path: str, preprocessed: bool = False) -> tuple[str, float]:
     import pytesseract
 
+    cv2 = _cv2()
     im = cv2.imread(path)
     if im is None:
         return "", 0.0
@@ -159,6 +190,15 @@ def _tesseract_image(path: str, preprocessed: bool = False) -> tuple[str, float]
 
 def _ocr_scanned_pdf(path: str) -> OCRResult:
     """OCR each PDF page as image when native text extraction is empty."""
+    try:
+        cv2 = _cv2()
+    except RuntimeError:
+        return OCRResult(
+            text="",
+            quality_score=0.0,
+            engine="opencv_unavailable",
+            pages=[],
+        )
     max_pages = int(os.getenv("OCR_MAX_PDF_PAGES", "40"))
     pages: list[OCRPage] = []
     all_text: list[str] = []
@@ -211,6 +251,10 @@ def process_path(path: str, document_id: str = "") -> OCRResult:
         return _ocr_scanned_pdf(path)
 
     if ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"):
+        try:
+            _cv2()
+        except RuntimeError:
+            return OCRResult(text="", quality_score=0.0, engine="opencv_unavailable", pages=[])
         pt, conf, boxes = _paddle_ocr_image(path)
         engine = "paddleocr"
         if not pt.strip():

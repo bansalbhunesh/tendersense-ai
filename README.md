@@ -132,7 +132,7 @@ This measures the rule-engine + JSON serialisation hot path. End-to-end tender i
 ├── backend/         Go 1.22 • Gin • PostgreSQL migrations • JWT auth • 44 tests
 ├── ai-service/      FastAPI • OCR (pdfplumber/Tesseract) • criteria + decision engine • 45 tests
 ├── frontend/        Vite • React 18 • TS strict • Toasts • Reasoning graph • 29 unit tests + Playwright e2e
-├── demo/            generate_demo_pdfs.py • 3 prebuilt PDFs • 2-minute live demo script
+├── demo/            generate_demo_pdfs.py • 4 prebuilt PDFs • 2-minute live demo script
 ├── docs/            CRPF Round 1 written submission • observability notes
 ├── docker-compose.yml
 └── .github/workflows/ci.yml   4-job CI matrix

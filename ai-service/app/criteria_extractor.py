@@ -93,13 +93,13 @@ def _category_for_field(field: str) -> str:
     return _CATEGORY_MAP.get(field, "general")
 
 
-def _parse_amount_inr(num_str: str, unit_str: str | None) -> float:
+def _parse_amount_inr(num_str: str, unit_str: str | None) -> float | None:
     """Convert a captured amount + optional unit (crore/lakh/lac/million) into rupees."""
     raw = (num_str or "").replace(",", "").strip()
     try:
         val = float(raw)
     except ValueError:
-        return 0.0
+        return None
     u = (unit_str or "").lower()
     if "crore" in u or "cr" == u.strip():
         val *= 1e7
@@ -133,6 +133,8 @@ def _emit_turnover(text: str, t: str, out: list[dict[str, Any]]) -> None:
     if not m:
         return
     val = _parse_amount_inr(m.group(1), m.group(2))
+    if val is None:
+        return
     if val <= 0:
         val = 5e7
     out.append(
@@ -159,7 +161,7 @@ def _emit_net_worth(text: str, t: str, out: list[dict[str, Any]]) -> None:
     clause = None
     if m:
         v = _parse_amount_inr(m.group(1), m.group(2))
-        if v > 0:
+        if v is not None and v > 0:
             val = v
         raw = m.group(0).strip()
         clause = _find_clause(text, m)
@@ -211,6 +213,8 @@ def _emit_emd(text: str, t: str, out: list[dict[str, Any]]) -> None:
             )
         return
     val = _parse_amount_inr(m.group(1), m.group(2))
+    if val is None:
+        return
     out.append(
         _criterion(
             text_raw=m.group(0).strip(),
@@ -248,6 +252,8 @@ def _emit_bank_guarantee(text: str, t: str, out: list[dict[str, Any]]) -> None:
             )
         return
     val = _parse_amount_inr(m.group(1), m.group(2))
+    if val is None:
+        return
     out.append(
         _criterion(
             text_raw=m.group(0).strip(),

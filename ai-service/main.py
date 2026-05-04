@@ -33,9 +33,18 @@ install_redaction(logging.getLogger())
 logger = logging.getLogger("tendersense-ai")
 
 
-def _split_origins(raw: str) -> list[str]:
-    parts = [x.strip() for x in raw.split(",") if x.strip()]
-    return parts if parts else ["*"]
+def parse_allowed_origins(raw: str | None = None) -> list[str]:
+    """Return a non-empty origin list. Never defaults to wildcard — misconfigured empty CSV must not open CORS."""
+    r = (raw if raw is not None else os.getenv("ALLOWED_ORIGINS") or "").strip()
+    if not r:
+        r = "http://localhost:5173"
+    parts = [x.strip() for x in r.split(",") if x.strip()]
+    if not parts:
+        raise RuntimeError(
+            "ALLOWED_ORIGINS must list at least one non-empty origin (comma-separated). "
+            "Wildcard CORS is not allowed."
+        )
+    return parts
 
 
 _MAX_PROCESS_CHARS = int(os.getenv("MAX_PROCESS_TEXT_CHARS", "500000"))
@@ -122,7 +131,7 @@ app = FastAPI(title="TenderSense AI", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_split_origins(os.getenv("ALLOWED_ORIGINS", "*")),
+    allow_origins=parse_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -133,6 +142,7 @@ app.add_middleware(
 def startup_validate_env() -> None:
     _require_env("DATA_DIR")
     _require_env("ALLOWED_ORIGINS")
+    _ = parse_allowed_origins()
     _log_event("startup_ok", data_dir=DATA_DIR)
 
 

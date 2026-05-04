@@ -22,10 +22,9 @@ type tenderService struct {
 }
 
 type EvaluationResult struct {
-	ID             string         `json:"evaluation_id"`
-	Decisions      int            `json:"decisions"`
-	DecisionsCount int            `json:"decisions_count"`
-	Graph          map[string]any `json:"graph"`
+	ID        string         `json:"evaluation_id"`
+	Decisions int            `json:"decisions"`
+	Graph     map[string]any `json:"graph"`
 }
 
 type AIOutput struct {
@@ -167,9 +166,8 @@ func (s *tenderService) TriggerEvaluation(ctx context.Context, tenderID string) 
 		tenderID, n, len(validReviewItems), len(bidderIDs), len(criteria),
 	)
 	return &EvaluationResult{
-		ID:             eid,
-		Decisions:      n,
-		DecisionsCount: n,
-		Graph:          aiOut.Graph,
+		ID:        eid,
+		Decisions: n,
+		Graph:     aiOut.Graph,
 	}, nil
 }

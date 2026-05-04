@@ -27,7 +27,18 @@ var (
 	evaluateClient = &http.Client{
 		Timeout: 15 * time.Minute,
 	}
-	aiCircuit = &simpleCircuitBreaker{
+
+	// Separate breakers so transient failures on one AI surface (OCR upload vs JSON vs
+	// long evaluate) do not block unrelated calls for the same cooldown window.
+	postJSONCircuit = &simpleCircuitBreaker{
+		failureThreshold: 5,
+		cooldown:         30 * time.Second,
+	}
+	postDocumentCircuit = &simpleCircuitBreaker{
+		failureThreshold: 5,
+		cooldown:         30 * time.Second,
+	}
+	postEvaluateCircuit = &simpleCircuitBreaker{
 		failureThreshold: 5,
 		cooldown:         30 * time.Second,
 	}
@@ -90,7 +101,20 @@ func PostEvaluateJSON(ctx context.Context, body any, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return doPostJSON(ctx, evaluateClient, "/v1/evaluate", body, out)
+	if !postEvaluateCircuit.allow() {
+		return fmt.Errorf("ai service evaluate circuit open; retry later")
+	}
+	err := doPostJSON(ctx, evaluateClient, "/v1/evaluate", body, out)
+	if err == nil {
+		postEvaluateCircuit.onSuccess()
+		return nil
+	}
+	var hs *HTTPStatusError
+	if errors.As(err, &hs) {
+		return err
+	}
+	postEvaluateCircuit.onFailure()
+	return err
 }
 
 // PostJSON calls the AI service with bounded retries; skips retries on 4xx and on context cancel.
@@ -98,14 +122,14 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !aiCircuit.allow() {
+	if !postJSONCircuit.allow() {
 		return fmt.Errorf("ai service circuit open; retry later")
 	}
 	var lastErr error
 	for attempt := 1; attempt <= postJSONMaxAttempts; attempt++ {
 		err := doPostJSON(ctx, aiClient, path, body, out)
 		if err == nil {
-			aiCircuit.onSuccess()
+			postJSONCircuit.onSuccess()
 			return nil
 		}
 		var hs *HTTPStatusError
@@ -113,7 +137,7 @@ func PostJSON(ctx context.Context, path string, body any, out any) error {
 			return err
 		}
 		lastErr = err
-		aiCircuit.onFailure()
+		postJSONCircuit.onFailure()
 		if attempt >= postJSONMaxAttempts {
 			break
 		}
@@ -177,23 +201,23 @@ func PostDocumentFile(ctx context.Context, absolutePath, documentID string, out 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !aiCircuit.allow() {
+	if !postDocumentCircuit.allow() {
 		return fmt.Errorf("ai service circuit open; retry later")
 	}
 	var lastErr error
 	for attempt := 1; attempt <= postDocumentMaxAttempts; attempt++ {
 		err := postDocumentFileOnce(ctx, absolutePath, documentID, out)
 		if err == nil {
-			aiCircuit.onSuccess()
+			postDocumentCircuit.onSuccess()
 			return nil
 		}
 		var hs *HTTPStatusError
 		if errors.As(err, &hs) {
-			aiCircuit.onFailure()
+			postDocumentCircuit.onFailure()
 			return err
 		}
 		lastErr = err
-		aiCircuit.onFailure()
+		postDocumentCircuit.onFailure()
 		if attempt >= postDocumentMaxAttempts {
 			break
 		}

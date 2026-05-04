@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -176,7 +177,9 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		payload, _ := json.Marshal(ocrRes)
-		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
+		if _, err := db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID); err != nil {
+			log.Printf("document_ocr_persist_failed document_id=%s err=%v", docID, err)
+		}
 
 		WriteAudit(db, uid, tenderID, "document.uploaded", map[string]any{"document_id": docID, "tender_id": tenderID})
 
@@ -195,15 +198,10 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 				}
 				field, _ := cr["field"].(string)
 				op, _ := cr["operator"].(string)
-				val := fmt.Sprint(cr["value"])
-				var dup int
-				_ = db.QueryRow(`
-					SELECT COUNT(*)::int FROM criteria
-					WHERE tender_id=$1
-					  AND COALESCE(payload->>'field','') = $2
-					  AND COALESCE(payload->>'operator','') = $3
-					  AND COALESCE(payload->>'value','') = $4
-				`, tenderID, field, op, val).Scan(&dup)
+				dup, err := criteriaDuplicateCount(db, tenderID, field, op, cr["value"])
+				if err != nil {
+					continue
+				}
 				if dup > 0 {
 					continue
 				}
@@ -231,8 +229,47 @@ func WriteAudit(db *sql.DB, userID, tenderID, action string, payload map[string]
 	b, _ := json.Marshal(payload)
 	b = pii.RedactJSON(b)
 	sum := util.ChecksumJSON(map[string]any{"action": action, "payload": json.RawMessage(b)})
-	db.Exec(`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
-		nullUUID(tenderID), nullUUID(userID), action, string(b), sum)
+	if _, err := db.Exec(`INSERT INTO audit_log (tender_id, user_id, action, payload, checksum) VALUES ($1::uuid,$2::uuid,$3,$4::jsonb,$5)`,
+		nullUUID(tenderID), nullUUID(userID), action, string(b), sum); err != nil {
+		log.Printf("audit_write_failed action=%s tender_id=%s err=%v", action, tenderID, err)
+	}
+}
+
+// criteriaDuplicateCount detects an existing criterion with the same field/operator/value.
+// Numeric JSON values are compared as PostgreSQL numeric so 5e+07 and 50000000 match.
+func criteriaDuplicateCount(db *sql.DB, tenderID, field, op string, valRaw any) (int, error) {
+	var dup int
+	switch v := valRaw.(type) {
+	case float64:
+		err := db.QueryRow(`
+			SELECT COUNT(*)::int FROM criteria
+			WHERE tender_id=$1
+			  AND COALESCE(payload->>'field','') = $2
+			  AND COALESCE(payload->>'operator','') = $3
+			  AND jsonb_typeof(payload->'value') = 'number'
+			  AND (payload->'value')::numeric = $4::numeric
+		`, tenderID, field, op, v).Scan(&dup)
+		return dup, err
+	case int:
+		return criteriaDuplicateCount(db, tenderID, field, op, float64(v))
+	case int64:
+		return criteriaDuplicateCount(db, tenderID, field, op, float64(v))
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			break
+		}
+		return criteriaDuplicateCount(db, tenderID, field, op, f)
+	}
+	val := fmt.Sprint(valRaw)
+	err := db.QueryRow(`
+		SELECT COUNT(*)::int FROM criteria
+		WHERE tender_id=$1
+		  AND COALESCE(payload->>'field','') = $2
+		  AND COALESCE(payload->>'operator','') = $3
+		  AND COALESCE(payload->>'value','') = $4
+	`, tenderID, field, op, val).Scan(&dup)
+	return dup, err
 }
 
 func nullUUID(s string) any {

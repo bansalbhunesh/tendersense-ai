@@ -173,7 +173,11 @@ func (r *sqlTenderRepository) SaveDecision(ctx context.Context, tx *sql.Tx, d ma
 	payload, _ := json.Marshal(d)
 
 	_, err := tx.ExecContext(ctx,
-		`INSERT INTO decisions (id, tender_id, bidder_id, criterion_id, payload, checksum) VALUES ($1,$2,$3::uuid,$4,$5::jsonb,$6)`,
+		`INSERT INTO decisions (id, tender_id, bidder_id, criterion_id, payload, checksum) VALUES ($1,$2,$3::uuid,$4,$5::jsonb,$6)
+		 ON CONFLICT (tender_id, bidder_id, criterion_id) DO UPDATE SET
+		   id = EXCLUDED.id,
+		   payload = EXCLUDED.payload,
+		   checksum = EXCLUDED.checksum`,
 		id, tenderID, bid, crid, string(payload), checksum)
 	return err
 }

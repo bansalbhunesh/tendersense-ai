@@ -42,7 +42,7 @@ func (f *fakeService) TriggerEvaluation(_ context.Context, _ string) (*service.E
 		return nil, f.err
 	}
 	if f.res == nil {
-		return &service.EvaluationResult{ID: "eval-1", Decisions: 1, DecisionsCount: 1, Graph: map[string]any{}}, nil
+		return &service.EvaluationResult{ID: "eval-1", Decisions: 1, Graph: map[string]any{}}, nil
 	}
 	return f.res, nil
 }
