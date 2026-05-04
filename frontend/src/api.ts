@@ -86,6 +86,37 @@ type StructuredError = { code?: string; message?: string; request_id?: string };
 
 const defaultFetchOpts: RequestInit = { credentials: "include" };
 
+/** Maps browser network failures to a clearer message (Render cold start, Vercel rewrite timeouts, etc.). */
+function mapNetworkError(err: unknown): Error {
+  const isNet =
+    err instanceof TypeError ||
+    (err instanceof Error &&
+      /failed to fetch|networkerror|load failed|network request failed|aborted/i.test(err.message));
+  if (isNet) {
+    return new Error(
+      "Cannot reach the API (host may be waking up — wait ~30s and refresh). If this persists, open /api/v1/version in a new tab or check Vercel → rewrites → Render URL in vercel.json.",
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/** One slow retry for GET/HEAD only — helps Render free-tier cold starts behind Vercel rewrites. */
+async function fetchWithOptionalRetry(url: string, init: RequestInit): Promise<Response> {
+  const method = (init.method || "GET").toUpperCase();
+  const allowRetry = method === "GET" || method === "HEAD";
+  try {
+    return await fetch(url, init);
+  } catch (first) {
+    if (!allowRetry) throw mapNetworkError(first);
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      return await fetch(url, init);
+    } catch (second) {
+      throw mapNetworkError(second);
+    }
+  }
+}
+
 async function readErrorMessage(res: Response): Promise<string> {
   const text = await res.text().catch(() => "");
   const ct = res.headers.get("content-type") || "";
@@ -116,7 +147,7 @@ async function handleUnauthorized() {
     const body: Record<string, string> = {};
     if (access) body.access_token = access;
     if (legacyRt) body.refresh_token = legacyRt;
-    await fetch(API + "/auth/logout", {
+    await fetchWithOptionalRetry(API + "/auth/logout", {
       ...defaultFetchOpts,
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -139,7 +170,7 @@ async function refreshAccessToken(): Promise<string | null> {
   const body: Record<string, string> = {};
   if (prior) body.access_token = prior;
   if (legacyRt) body.refresh_token = legacyRt;
-  const res = await fetch(API + "/auth/refresh", {
+  const res = await fetchWithOptionalRetry(API + "/auth/refresh", {
     ...defaultFetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -185,7 +216,7 @@ export async function apiFetch(path: string, opts: RequestInit = {}) {
       ...(opts.headers as Record<string, string>),
     };
     if (access) headers["Authorization"] = `Bearer ${access}`;
-    return fetch(API + path, { ...defaultFetchOpts, ...opts, headers });
+    return fetchWithOptionalRetry(API + path, { ...defaultFetchOpts, ...opts, headers });
   };
 
   let access = token();
@@ -218,7 +249,7 @@ export async function apiFetchWithMeta<T = unknown>(
       ...(opts.headers as Record<string, string>),
     };
     if (access) headers["Authorization"] = `Bearer ${access}`;
-    return fetch(API + path, { ...defaultFetchOpts, ...opts, headers });
+    return fetchWithOptionalRetry(API + path, { ...defaultFetchOpts, ...opts, headers });
   };
 
   let res = await run(token());
@@ -251,7 +282,7 @@ export async function apiUpload(path: string, form: FormData, opts: RequestInit 
       ...(opts.headers as Record<string, string>),
     };
     if (access) headers["Authorization"] = `Bearer ${access}`;
-    return fetch(API + path, { ...defaultFetchOpts, ...opts, method: opts.method || "POST", headers, body: form });
+    return fetchWithOptionalRetry(API + path, { ...defaultFetchOpts, ...opts, method: opts.method || "POST", headers, body: form });
   };
 
   let res = await run(token());
@@ -269,7 +300,7 @@ export async function apiUpload(path: string, form: FormData, opts: RequestInit 
 }
 
 export async function login(email: string, password: string) {
-  const r = await fetch(API + "/auth/login", {
+  const r = await fetchWithOptionalRetry(API + "/auth/login", {
     ...defaultFetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -281,7 +312,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function register(email: string, password: string) {
-  const r = await fetch(API + "/auth/register", {
+  const r = await fetchWithOptionalRetry(API + "/auth/register", {
     ...defaultFetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -293,7 +324,7 @@ export async function register(email: string, password: string) {
 }
 
 export async function forgotPassword(email: string): Promise<{ message: string; reset_token?: string; expires_at?: string }> {
-  const r = await fetch(API + "/auth/forgot-password", {
+  const r = await fetchWithOptionalRetry(API + "/auth/forgot-password", {
     ...defaultFetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -308,7 +339,7 @@ export async function resetPassword(
   resetToken: string,
   newPassword: string,
 ): Promise<{ message: string }> {
-  const r = await fetch(API + "/auth/reset-password", {
+  const r = await fetchWithOptionalRetry(API + "/auth/reset-password", {
     ...defaultFetchOpts,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -329,7 +360,7 @@ export async function logout() {
     const body: Record<string, string> = {};
     if (access) body.access_token = access;
     if (legacyRt) body.refresh_token = legacyRt;
-    await fetch(API + "/auth/logout", {
+    await fetchWithOptionalRetry(API + "/auth/logout", {
       ...defaultFetchOpts,
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -89,28 +89,60 @@ export default function TenderWorkspace() {
     if (!opts?.silent) setPageLoading(true);
     try {
       const biddersUrl = `/tenders/${tenderId}/bidders?limit=${bidderPageSize}&offset=${bidderOffset}`;
-      const [tt, bRes, r] = await Promise.all([
+      const [tOut, bOut, rOut] = await Promise.allSettled([
         apiFetch(`/tenders/${tenderId}`) as Promise<Record<string, unknown>>,
         apiFetchWithMeta<{ bidders: { id: string; name: string }[] }>(biddersUrl),
-        apiFetch(`/tenders/${tenderId}/results?limit=200&offset=0`).catch(() => null) as Promise<{
-          decisions: Record<string, unknown>[];
-          graph: Record<string, unknown> | null;
-        } | null>,
+        (async () => {
+          try {
+            return (await apiFetch(`/tenders/${tenderId}/results?limit=200&offset=0`)) as {
+              decisions: Record<string, unknown>[];
+              graph: Record<string, unknown> | null;
+            };
+          } catch {
+            return null;
+          }
+        })(),
       ]);
-      setTender(tt);
-      const bl = bRes.data?.bidders || [];
-      setBidders(bl);
-      setBidderTotal(bRes.totalCount);
-      await loadBidderDocuments(bl);
-      if (r) {
+
+      const errs: string[] = [];
+      if (tOut.status === "fulfilled") {
+        setTender(tOut.value);
+      } else {
+        errs.push(tOut.reason instanceof Error ? tOut.reason.message : String(tOut.reason));
+        setTender(null);
+      }
+
+      let bl: { id: string; name: string }[] = [];
+      if (bOut.status === "fulfilled") {
+        bl = bOut.value.data?.bidders || [];
+        setBidders(bl);
+        setBidderTotal(bOut.value.totalCount);
+      } else {
+        errs.push(bOut.reason instanceof Error ? bOut.reason.message : String(bOut.reason));
+        setBidders([]);
+        setBidderTotal(null);
+      }
+
+      if (rOut.status === "fulfilled" && rOut.value) {
         setResults({
-          decisions: (r.decisions || []) as Decision[],
-          graph: r.graph,
+          decisions: (rOut.value.decisions || []) as Decision[],
+          graph: rOut.value.graph,
         });
       } else {
         setResults(null);
       }
-      const crit = ((tt.criteria as unknown[]) || []).length;
+
+      if (bl.length) await loadBidderDocuments(bl);
+
+      if (tOut.status === "fulfilled" && errs.length && !opts?.silent) {
+        toast.error(t("workspace.loadFailed", { message: errs.join(" · ") }));
+      }
+      if (tOut.status === "rejected") {
+        throw tOut.reason instanceof Error ? tOut.reason : new Error(String(tOut.reason));
+      }
+
+      const tt = tOut.status === "fulfilled" ? tOut.value : null;
+      const crit = ((tt?.criteria as unknown[]) || []).length;
       return { criteriaCount: crit, bidderCount: bl.length };
     } finally {
       if (!opts?.silent) setPageLoading(false);

@@ -15,7 +15,7 @@ This stack is designed to run as **three moving parts** (Postgres, Go API, Pytho
 - **App `tendersense-api`**: Docker image from `backend/Dockerfile`, env `DATABASE_URL`, `AI_SERVICE_URL=https://tendersense-ai.internal:8081` (Fly private networking) or public URL if split.
 - **App `tendersense-ai`**: Docker image from `ai-service/Dockerfile`, attach volume at `/app/data/uploads`.
 - **Postgres**: Fly Postgres or external.
-- **Frontend**: Vercel/Netlify static build from `frontend` with `VITE_*` API base if used.
+- **Frontend**: Vercel/Netlify static build from `frontend` with `VITE_*` API base if used. If the SPA proxies `/api/*` to Render ([`frontend/vercel.json`](../frontend/vercel.json)), the **first request after idle** can hit **Vercel’s edge timeout** while Render **cold-starts** — the UI may show “Cannot reach the API…”. Keep Render awake (paid instance, health cron, or manual refresh after ~30s) or point `vercel.json` at a warm API URL.
 
 Exact `fly.toml` files vary by region and org; generate with `fly launch` in each directory and merge env from `.env.example`.
 
