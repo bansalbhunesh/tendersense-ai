@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -18,6 +19,7 @@ type App struct {
 	AllowedOrigins          []string
 	originRegexes           []*regexp.Regexp
 	allowVercelPreviewHosts bool
+	trustForwardedHostCORS  bool
 }
 
 // OriginAllowed returns true if the request Origin is listed in ALLOWED_ORIGINS,
@@ -72,13 +74,63 @@ func LoadApp() (*App, error) {
 			regexes = append(regexes, rx)
 		}
 	}
-	allowVercel := strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "1") ||
-		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "true") ||
-		strings.EqualFold(strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS")), "yes")
+	allowVercel := resolveAllowVercelPreviewCORS(origins)
 	if allowVercel {
-		log.Println("config: CORS_ALLOW_VERCEL_PREVIEWS enabled — any https://*.vercel.app Origin is allowed (disable for strict production)")
+		log.Println("config: CORS allows any https://*.vercel.app Origin (preview + production subdomains). Set CORS_ALLOW_VERCEL_PREVIEWS=false to disable.")
 	}
-	return &App{Port: port, AllowedOrigins: origins, originRegexes: regexes, allowVercelPreviewHosts: allowVercel}, nil
+	trustFwd := trustForwardedHostCORSEnabled()
+	if trustFwd {
+		log.Println("config: CORS trusts X-Forwarded-Host / Forwarded when matching Origin (Vercel→API rewrites); set CORS_TRUST_FORWARDED_HOST=false to disable")
+	}
+	return &App{
+		Port:                    port,
+		AllowedOrigins:          origins,
+		originRegexes:           regexes,
+		allowVercelPreviewHosts: allowVercel,
+		trustForwardedHostCORS:  trustFwd,
+	}, nil
+}
+
+// trustForwardedHostCORSEnabled defaults true so preview deployments work behind
+// reverse proxies without listing every hostname in ALLOWED_ORIGINS.
+// resolveAllowVercelPreviewCORS is true when explicitly enabled, or when
+// ALLOWED_ORIGINS already lists a *.vercel.app site (typical Vercel+Render split)
+// so preview deployment URLs work without listing each hash in env.
+func resolveAllowVercelPreviewCORS(origins []string) bool {
+	explicit := strings.TrimSpace(os.Getenv("CORS_ALLOW_VERCEL_PREVIEWS"))
+	switch {
+	case strings.EqualFold(explicit, "1"), strings.EqualFold(explicit, "true"), strings.EqualFold(explicit, "yes"):
+		return true
+	case strings.EqualFold(explicit, "0"), strings.EqualFold(explicit, "false"), strings.EqualFold(explicit, "no"), strings.EqualFold(explicit, "off"):
+		return false
+	default:
+		return hasVercelAppOrigin(origins)
+	}
+}
+
+func hasVercelAppOrigin(origins []string) bool {
+	for _, o := range origins {
+		u, err := url.Parse(o)
+		if err != nil {
+			continue
+		}
+		h := strings.ToLower(u.Hostname())
+		if h == "vercel.app" || strings.HasSuffix(h, ".vercel.app") {
+			return true
+		}
+	}
+	return false
+}
+
+func trustForwardedHostCORSEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("CORS_TRUST_FORWARDED_HOST"))
+	if v == "" {
+		return true
+	}
+	return !(strings.EqualFold(v, "0") ||
+		strings.EqualFold(v, "false") ||
+		strings.EqualFold(v, "no") ||
+		strings.EqualFold(v, "off"))
 }
 
 // ValidateCoreSecrets ensures required secrets and URLs are present before opening the database.

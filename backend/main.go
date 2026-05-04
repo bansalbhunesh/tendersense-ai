@@ -81,10 +81,11 @@ func main() {
 	r.MaxMultipartMemory = 50 << 20 // 50 MB max upload
 
 	corsCfg := cors.Config{
-		AllowOriginFunc:  appCfg.OriginAllowed,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type", "Accept"},
-		AllowCredentials: true,
+		AllowOriginFunc:            appCfg.OriginAllowed,
+		AllowOriginWithContextFunc: appCfg.AllowOriginViaForwardedHost,
+		AllowMethods:               []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:               []string{"Origin", "Authorization", "Content-Type", "Accept"},
+		AllowCredentials:           true,
 	}
 	r.Use(cors.New(corsCfg))
 
