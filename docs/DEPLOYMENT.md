@@ -27,21 +27,23 @@ When `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, and `S3_BUCKET` are set, s
 
 Set `S3_USE_SSL=false` for plain HTTP MinIO inside Docker.
 
-Example `docker-compose` MinIO (dev):
+Example `docker-compose` MinIO (dev) — **never hardcode** root passwords in repo YAML; use `.env` (see root `.env.example`):
 
 ```yaml
 minio:
   image: minio/minio:latest
   command: server /data --console-address ":9001"
   environment:
-    MINIO_ROOT_USER: minio
-    MINIO_ROOT_PASSWORD: minio12345
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
   ports:
     - "9000:9000"
     - "9001:9001"
 ```
 
-Create a bucket (e.g. `tendersense`) via the console, then set backend env to match.
+Create a bucket (e.g. `tendersense`) via the console, then set backend `S3_*` env to match (`S3_SECRET_KEY` must equal `MINIO_ROOT_PASSWORD` when using root credentials in dev).
+
+Session semantics (refresh body, access TTL overlap) are documented in [`docs/SECURITY.md`](SECURITY.md).
 
 ## RBAC
 

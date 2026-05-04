@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +65,43 @@ func randomJTI() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+const userAuthCachePrefix = "ts:uatv:"
+
+// InvalidateUserSessionCache drops the short-lived role/TV cache for a user (call after
+// password reset, logout-all, or any access_token_version bump).
+func InvalidateUserSessionCache(ctx context.Context, userID string) {
+	if sharedRedis == nil || strings.TrimSpace(userID) == "" {
+		return
+	}
+	_ = sharedRedis.Del(ctx, userAuthCachePrefix+userID).Err()
+}
+
+func loadRoleAndTV(ctx context.Context, db *sql.DB, userID string) (role string, tv int64, err error) {
+	if sharedRedis != nil {
+		s, rerr := sharedRedis.Get(ctx, userAuthCachePrefix+userID).Result()
+		if rerr == nil && s != "" {
+			tab := strings.IndexByte(s, '\t')
+			if tab > 0 && tab < len(s)-1 {
+				if v, perr := strconv.ParseInt(s[tab+1:], 10, 64); perr == nil {
+					return s[:tab], v, nil
+				}
+			}
+		}
+	}
+	err = db.QueryRowContext(ctx,
+		`SELECT COALESCE(role,'officer'), COALESCE(access_token_version, 0) FROM users WHERE id = $1::uuid`,
+		userID,
+	).Scan(&role, &tv)
+	if err != nil {
+		return "", 0, err
+	}
+	if sharedRedis != nil {
+		payload := role + "\t" + strconv.FormatInt(tv, 10)
+		_ = sharedRedis.Set(ctx, userAuthCachePrefix+userID, payload, 20*time.Second).Err()
+	}
+	return role, tv, nil
+}
+
 // AuthRequired validates the bearer JWT, rejects revoked jtis, and reloads role from the database.
 func AuthRequired(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -109,10 +148,7 @@ func AuthRequired(db *sql.DB) gin.HandlerFunc {
 		var dbRole string
 		var dbTV int64
 		if db != nil {
-			err = db.QueryRowContext(ctx,
-				`SELECT COALESCE(role,'officer'), COALESCE(access_token_version, 0) FROM users WHERE id = $1::uuid`,
-				claims.UserID,
-			).Scan(&dbRole, &dbTV)
+			dbRole, dbTV, err = loadRoleAndTV(ctx, db, claims.UserID)
 			if err == sql.ErrNoRows {
 				util.Unauthorized(c, "invalid or expired token")
 				return

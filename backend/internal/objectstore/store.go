@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -19,8 +20,36 @@ type Store struct {
 	Bucket string
 }
 
-// FromEnv returns a client when S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, and S3_BUCKET are set.
+var (
+	storeMu     sync.Mutex
+	storeCached *Store
+	storeOK     bool
+	storeInited bool
+)
+
+// ResetFromEnvCacheForTesting clears the lazy singleton (tests only).
+func ResetFromEnvCacheForTesting() {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	storeInited = false
+	storeCached = nil
+	storeOK = false
+}
+
+// FromEnv returns a shared client when S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, and S3_BUCKET are set.
+// The MinIO client and bucket existence check run once per process (not per request).
 func FromEnv() (*Store, bool) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	if storeInited {
+		return storeCached, storeOK
+	}
+	storeInited = true
+	storeCached, storeOK = fromEnvOnce()
+	return storeCached, storeOK
+}
+
+func fromEnvOnce() (*Store, bool) {
 	endpoint := strings.TrimSpace(os.Getenv("S3_ENDPOINT"))
 	access := strings.TrimSpace(os.Getenv("S3_ACCESS_KEY"))
 	secret := strings.TrimSpace(os.Getenv("S3_SECRET_KEY"))

@@ -58,6 +58,7 @@ func main() {
 	}
 	revocation.StartCleanupLoop(database, time.Hour)
 	redisClient := redisclient.NewOptional()
+	middleware.BindRedisForAuth(redisClient)
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("GIN_MODE")), "release") &&
 		strings.EqualFold(strings.TrimSpace(os.Getenv("REQUIRE_REDIS")), "true") &&
 		redisClient == nil {

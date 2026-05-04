@@ -352,6 +352,9 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "failed to commit password reset")
 			return
 		}
+		if resetUserID != "" {
+			middleware.InvalidateUserSessionCache(c.Request.Context(), resetUserID)
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "Password reset successful. You can now sign in."})
 	}
 }
@@ -475,6 +478,7 @@ func LogoutAllSessions(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "logout failed")
 			return
 		}
+		middleware.InvalidateUserSessionCache(c.Request.Context(), uid)
 		jti := strings.TrimSpace(c.GetString("access_jti"))
 		if jti != "" {
 			exp := time.Now().Add(middleware.AccessTokenTTL())

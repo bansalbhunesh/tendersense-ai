@@ -43,21 +43,25 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 | **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic\|groq` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
 | **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail, evidence chips, "Copy as JSON"), two-pane review queue with criterion-level overrides, audit log, in-app toasts, **EN ↔ हिं i18next toggle** persisted per officer |
 | **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
-| **Auth** | JWT access + **refresh tokens** (DB-backed), `POST /auth/refresh` + logout, tunable `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL`; optional **`admin`** role for cross-tenant listing |
+| **Auth** | Short-lived access JWTs + **rotating refresh** (HttpOnly cookie, DB-backed JTI), revocation cleanup, `access_token_version` on password reset / logout-all; optional **`admin`** role — see [`docs/SECURITY.md`](docs/SECURITY.md) |
 | **Demo pack** | **4** deterministic golden PDFs in `demo/pdfs/` (incl. Devanagari `04_TENDER_BHARAT_HINDI.pdf`), throughput benchmark (`benchmark.py`), reusable eval-payload fixture, 2-minute pitch script |
 
 > **Bharat-first?** See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md) for the full sovereignty / Indic / MeitY-alignment story.
 
 ### Demo media and public URL (submission polish)
 
-There is **no hosted demo by default** (sovereign / self-hosted mode). Use **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for Fly.io / MinIO / env wiring, then paste your **live URL** here.
+There is **no hosted demo by default** (sovereign / self-hosted mode). Deploy with **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** (Fly.io example), then replace the link below with your **public API or app URL** for judges.
 
-**Screenshots / video:** add files under [`docs/screenshots/`](docs/screenshots/) (see [`docs/screenshots/README.md`](docs/screenshots/README.md)) — e.g. `dashboard.png`, `reasoning-graph.png`, `review-queue.png` — then link them below before judging:
+**Public URL (maintainers):** _after deploy, use your Fly/Vercel URL — e.g. `https://tendersense-api.fly.dev` + static frontend URL._
 
-- Dashboard: _add link_
-- Reasoning graph: _add link_
-- Review queue: _add link_
-- Optional Loom / mp4: _add link_
+**Screenshots / video:** capture assets under [`docs/screenshots/`](docs/screenshots/) (filenames and checklist in [`docs/screenshots/README.md`](docs/screenshots/README.md)), then use **relative** links so they work on GitHub:
+
+- Dashboard: [`docs/screenshots/dashboard.png`](docs/screenshots/dashboard.png) _(add file)_
+- Reasoning graph: [`docs/screenshots/reasoning-graph.png`](docs/screenshots/reasoning-graph.png) _(add file)_
+- Review queue: [`docs/screenshots/review-queue.png`](docs/screenshots/review-queue.png) _(add file)_
+- Demo walkthrough (Loom / mp4 / YouTube): _add link in README once recorded_
+
+Auth semantics for judges: [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ---
 
