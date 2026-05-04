@@ -37,6 +37,8 @@ data/uploads/
 # IDE / OS
 .idea/
 .vscode/
+# Third-party Cursor skill drops (not part of TenderSense application code)
+.cursor/skills/definite-app-ultraplan/
 *.swp
 .DS_Store
 Thumbs.db
