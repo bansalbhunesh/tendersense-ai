@@ -36,7 +36,7 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 
 | Capability | What's in the box |
 |---|---|
-| **Tender ingest** | Native PDF parsing → Tesseract/PaddleOCR fallback, per-page quality score, **Hindi OCR via Tesseract `eng+hin` + PaddleOCR Devanagari head** |
+| **Tender ingest** | Native PDF parsing → Tesseract by default; **PaddleOCR when installed** ([`ai-service/requirements-ocr.txt`](ai-service/requirements-ocr.txt)), per-page quality score, **Hindi via Tesseract `eng+hin` + optional Paddle Devanagari pass** |
 | **Criteria extraction** | LLM-with-schema (Anthropic Claude) when configured; deterministic regex extractor covers ~16 categories: turnover, net worth, EMD, bank guarantee, experience, manpower, ISO 9001/14001/27001, NABL, GST/PAN/TDS, MSME/Udyam, bid validity, blacklisting |
 | **Indic language pipeline** | Devanagari ratio language detector → pluggable translator (Bhashini ULCA / passthrough) → existing extractor. Each criterion carries `source_text_lang` and `source_clause_translated` so the audit trail keeps the original Hindi clause |
 | **Decision engine** | Rule-based numeric thresholds + document-presence checks; confidence ≥ 0.7 `ELIGIBLE`/`NOT_ELIGIBLE` without an API key, `NEEDS_REVIEW` only on genuinely missing/conflicting evidence; optional LLM cross-check |
@@ -47,6 +47,10 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 | **Demo pack** | **4** deterministic golden PDFs in `demo/pdfs/` (incl. Devanagari `04_TENDER_BHARAT_HINDI.pdf`), throughput benchmark (`benchmark.py`), reusable eval-payload fixture, 2-minute pitch script |
 
 > **Bharat-first?** See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md) for the full sovereignty / Indic / MeitY-alignment story.
+
+### Demo media and public URL (submission polish)
+
+There is **no hosted demo by default** (sovereign / self-hosted mode): reviewers should use Docker above, or deploy backend + AI + Postgres to Fly.io, Railway, or similar and paste the **live URL** here. For pitch decks and judges, add **2–3 screenshots** (officer dashboard, reasoning graph, review queue) and optionally a **short screen recording** — link them from this section when ready.
 
 ---
 

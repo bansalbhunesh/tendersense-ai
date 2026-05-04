@@ -1,0 +1,7 @@
+# Optional heavy OCR stack — install on top of requirements.txt when you want
+# PaddleOCR-first raster OCR (Devanagari + layout-heavy scans). Default Docker/CI
+# images use Tesseract + pdfplumber only to keep image size and install time down.
+-r requirements.txt
+
+paddlepaddle==2.6.2
+paddleocr==2.9.1

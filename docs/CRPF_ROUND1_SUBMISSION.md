@@ -23,7 +23,7 @@ Failure modes judges care about: **false disqualification** from bad OCR, **unau
 
 **Approach**
 
-- **Ingestion:** Store the tender PDF in an object store; extract text with **native PDF parsing first** (digital text), falling back to **OCR** for scans (PaddleOCR primary, Tesseract fallback), with a **document quality score** per file.
+- **Ingestion:** Store the tender PDF in an object store; extract text with **native PDF parsing first** (digital text), falling back to **OCR** for scans (**PaddleOCR when the optional stack is installed**, otherwise Tesseract), with a **document quality score** per file.
 - **Segmentation:** Run a structured extraction pass (LLM with schema validation when available; deterministic fallback for sandbox demos) that classifies clauses into:
   - **Financial** (turnover, net worth, liquidity),
   - **Technical / experience** (similar projects, timelines),

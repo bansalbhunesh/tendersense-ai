@@ -10,7 +10,6 @@ anthropic==0.40.0
 httpx==0.28.1
 redis==5.2.1
 
-# OCR — optional; service degrades gracefully if not installed
-# paddlepaddle==2.6.2
-# paddleocr==2.9.1
+# Raster OCR: Tesseract is always listed; PaddleOCR is optional (large wheels).
+# For PaddleOCR: pip install -r requirements-ocr.txt
 pytesseract==0.3.13

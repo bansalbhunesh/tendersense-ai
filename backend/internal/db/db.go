@@ -128,6 +128,8 @@ func Migrate(db *sql.DB) error {
 			checksum TEXT,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_tender_id ON audit_log(tender_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);`,
 		`CREATE TABLE IF NOT EXISTS review_queue (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			tender_id UUID NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,

@@ -41,7 +41,7 @@ calls to foreign clouds.
 | Capability | State | Notes |
 |---|---|---|
 | Devanagari (Hindi) text in digital PDFs | **Working** | `01_TENDER_CRPF_DEMO.pdf` has an EN twin (`04_TENDER_BHARAT_HINDI.pdf`); pdfplumber extracts the Devanagari clusters cleanly and `verify_demo_pdfs.py` asserts on stems like `टर्नओवर`, `जीएसटी`, `आईएसओ`. |
-| OCR engine selection | **Working (PaddleOCR primary, Tesseract fallback)** | See `ai-service/app/ocr_pipeline.py`. PaddleOCR ships Devanagari-trained weights out of the box; Tesseract uses `hin` + `eng` traineddata when present. |
+| OCR engine selection | **Working (Tesseract + pdfplumber by default; PaddleOCR primary when installed)** | See `ai-service/app/ocr_pipeline.py` and optional `ai-service/requirements-ocr.txt`. PaddleOCR ships Devanagari-trained weights out of the box; Tesseract uses `hin` + `eng` traineddata when present. |
 | Demo PDF generator with Devanagari | **Working** | `demo/generate_demo_pdfs.py` lazily downloads `NotoSansDevanagari-Regular.ttf` into `demo/.fonts/` (gitignored) and embeds it via `fpdf2.add_font`. |
 | Deterministic decision engine on Hindi clauses | **Working through translation hop** | `ai-service/app/decision_engine.py` regexes match on EN normalised tokens (`turnover`, `crore`, `gstin`, `iso`); Hindi inputs flow through the translation step described below before evaluation. |
 | Bilingual reasoning strings | **Stubbed** | The reasoning sentences emitted by `decision_engine` are EN today. Per-criterion bilingual rendering is on the Round-2 list (Section 7). |

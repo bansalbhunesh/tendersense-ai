@@ -9,6 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def test_import_main_without_allowed_origins_raises(tmp_path, monkeypatch):
+    """Misconfigured deploy must not fall back to localhost CORS at import."""
+    monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    if "main" in sys.modules:
+        del sys.modules["main"]
+    with pytest.raises(RuntimeError, match="ALLOWED_ORIGINS"):
+        importlib.import_module("main")
+
+
 def _fresh_app(monkeypatch, data_dir):
     """Reload `main` so DATA_DIR (captured at import time) reflects test env."""
     monkeypatch.setenv("DATA_DIR", str(data_dir))

@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 \
     fonts-noto-core fonts-deva \
     && rm -rf /var/lib/apt/lists/*
+# Default image: Tesseract + pdfplumber. For PaddleOCR, build from requirements-ocr.txt instead.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .

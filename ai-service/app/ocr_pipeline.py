@@ -1,6 +1,7 @@
 """
 Document processing: native PDF text via pdfplumber, then OpenCV preprocess +
-PaddleOCR primary / Tesseract fallback when needed.
+raster OCR. **PaddleOCR when installed** (see ``requirements-ocr.txt``); otherwise
+Tesseract (and pdfplumber-only for digital PDFs).
 """
 
 from __future__ import annotations
@@ -273,9 +274,23 @@ def process_path(path: str, document_id: str = "") -> OCRResult:
 
 
 def redact_noise(text: str) -> str:
-    """Light cleanup for common OCR confusions (O vs 0) in numeric contexts."""
-    def fix_num(match: re.Match) -> str:
-        s = match.group(0)
-        return s.replace("O", "0").replace("o", "0")
+    """Replace OCR ``O``/``o`` with ``0`` only inside digit/amount-like runs.
 
-    return re.sub(r"(?<=[\d₹,\s])(?:[\dO,o]{1,3}[,\s]?)+(?=[\d\s]|$)", fix_num, text)
+    Uses a digit/₹/comma/dot lookbehind (not whitespace), so ``10 OFF`` is not
+    touched. Runs are ``[Oo0-9,₹.]+`` until a non-amount character; runs that
+    contain only amount symbols and at least one ``O``/``o`` get O→0.
+    """
+
+    def fix_block(m: re.Match) -> str:
+        block = m.group(1)
+        if not re.search(r"[Oo]", block):
+            return block
+        if re.search(r"[^\d,₹.Oo]", block):
+            return block
+        return block.replace("O", "0").replace("o", "0")
+
+    return re.sub(
+        r"(?<=[\d,₹.])([Oo\d,₹.]+)(?=[^\d,₹.Oo]|$)",
+        fix_block,
+        text,
+    )

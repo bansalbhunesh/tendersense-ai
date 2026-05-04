@@ -34,10 +34,17 @@ logger = logging.getLogger("tendersense-ai")
 
 
 def parse_allowed_origins(raw: str | None = None) -> list[str]:
-    """Return a non-empty origin list. Never defaults to wildcard — misconfigured empty CSV must not open CORS."""
+    """Return a non-empty origin list.
+
+    Empty or whitespace-only ``ALLOWED_ORIGINS`` raises — no silent localhost default
+    (avoids a misconfigured production image advertising the wrong allowlist at import).
+    """
     r = (raw if raw is not None else os.getenv("ALLOWED_ORIGINS") or "").strip()
     if not r:
-        r = "http://localhost:5173"
+        raise RuntimeError(
+            "ALLOWED_ORIGINS must list at least one non-empty origin (comma-separated). "
+            "Wildcard CORS is not allowed."
+        )
     parts = [x.strip() for x in r.split(",") if x.strip()]
     if not parts:
         raise RuntimeError(

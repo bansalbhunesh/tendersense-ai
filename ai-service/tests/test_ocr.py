@@ -13,6 +13,17 @@ def test_redact_noise_idempotent_on_plain_text():
     assert redact_noise("hello world") == "hello world"
 
 
+def test_redact_noise_fixes_letter_o_in_amounts():
+    assert redact_noise("EMD Rs.5O,000") == "EMD Rs.50,000"
+    assert redact_noise("turnover 1OO lakh") == "turnover 100 lakh"
+    assert redact_noise("₹1O") == "₹10"
+
+
+def test_redact_noise_does_not_corrupt_common_words():
+    assert redact_noise("10 OFF on selected items") == "10 OFF on selected items"
+    assert redact_noise("ISO 9001 required") == "ISO 9001 required"
+
+
 def test_pdfplumber_extracts_text(synthetic_pdf):
     """Native PDFs (text layer present) should round-trip through pdfplumber and
     yield non-empty text + a positive quality score."""
