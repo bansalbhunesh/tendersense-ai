@@ -1,15 +1,26 @@
 const API = "/api/v1";
 
+const REFRESH_KEY = "ts_refresh";
+
 export function token(): string | null {
   return localStorage.getItem("ts_token");
+}
+
+export function refreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
 }
 
 export function setToken(value: string): void {
   localStorage.setItem("ts_token", value);
 }
 
+export function setRefreshToken(value: string): void {
+  localStorage.setItem(REFRESH_KEY, value);
+}
+
 export function clearToken(): void {
   localStorage.removeItem("ts_token");
+  localStorage.removeItem(REFRESH_KEY);
 }
 
 type StructuredError = { code?: string; message?: string; request_id?: string };
@@ -44,13 +55,66 @@ function handleUnauthorized() {
   }
 }
 
-export async function apiFetch(path: string, opts: RequestInit = {}) {
-  const t = token();
-  const headers: Record<string, string> = {
-    ...(opts.headers as Record<string, string>),
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const rt = refreshToken();
+  if (!rt) return null;
+  const res = await fetch(API + "/auth/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: rt }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    token?: string;
   };
-  if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(API + path, { ...opts, headers });
+  const access = data.access_token || data.token || "";
+  if (data.refresh_token) setRefreshToken(data.refresh_token);
+  if (access) setToken(access);
+  return access || null;
+}
+
+function ensureRefreshedAccess(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+type AuthTokenPayload = {
+  token?: string;
+  access_token?: string;
+  refresh_token?: string;
+};
+
+function applyAuthPayload(data: AuthTokenPayload): void {
+  const access = data.access_token || data.token;
+  if (access) setToken(access);
+  if (data.refresh_token) setRefreshToken(data.refresh_token);
+}
+
+export async function apiFetch(path: string, opts: RequestInit = {}) {
+  const run = async (access: string | null) => {
+    const headers: Record<string, string> = {
+      ...(opts.headers as Record<string, string>),
+    };
+    if (access) headers["Authorization"] = `Bearer ${access}`;
+    return fetch(API + path, { ...opts, headers });
+  };
+
+  let access = token();
+  let res = await run(access);
+  if (res.status === 401 && refreshToken()) {
+    const next = await ensureRefreshedAccess();
+    if (next) {
+      res = await run(next);
+    }
+  }
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized();
     throw new Error(await readErrorMessage(res));
@@ -68,12 +132,19 @@ export async function apiFetchWithMeta<T = unknown>(
   path: string,
   opts: RequestInit = {},
 ): Promise<{ data: T; totalCount: number | null }> {
-  const t = token();
-  const headers: Record<string, string> = {
-    ...(opts.headers as Record<string, string>),
+  const run = async (access: string | null) => {
+    const headers: Record<string, string> = {
+      ...(opts.headers as Record<string, string>),
+    };
+    if (access) headers["Authorization"] = `Bearer ${access}`;
+    return fetch(API + path, { ...opts, headers });
   };
-  if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(API + path, { ...opts, headers });
+
+  let res = await run(token());
+  if (res.status === 401 && refreshToken()) {
+    const next = await ensureRefreshedAccess();
+    if (next) res = await run(next);
+  }
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized();
     throw new Error(await readErrorMessage(res));
@@ -94,12 +165,19 @@ export async function apiFetchWithMeta<T = unknown>(
 }
 
 export async function apiUpload(path: string, form: FormData, opts: RequestInit = {}) {
-  const t = token();
-  const headers: Record<string, string> = {
-    ...(opts.headers as Record<string, string>),
+  const run = async (access: string | null) => {
+    const headers: Record<string, string> = {
+      ...(opts.headers as Record<string, string>),
+    };
+    if (access) headers["Authorization"] = `Bearer ${access}`;
+    return fetch(API + path, { ...opts, method: opts.method || "POST", headers, body: form });
   };
-  if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(API + path, { ...opts, method: opts.method || "POST", headers, body: form });
+
+  let res = await run(token());
+  if (res.status === 401 && refreshToken()) {
+    const next = await ensureRefreshedAccess();
+    if (next) res = await run(next);
+  }
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized();
     throw new Error(await readErrorMessage(res));
@@ -116,8 +194,8 @@ export async function login(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   if (!r.ok) throw new Error(await readErrorMessage(r));
-  const data = (await r.json()) as { token: string };
-  setToken(data.token);
+  const data = (await r.json()) as AuthTokenPayload;
+  applyAuthPayload(data);
 }
 
 export async function register(email: string, password: string) {
@@ -127,8 +205,8 @@ export async function register(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   if (!r.ok) throw new Error(await readErrorMessage(r));
-  const data = (await r.json()) as { token: string };
-  setToken(data.token);
+  const data = (await r.json()) as AuthTokenPayload;
+  applyAuthPayload(data);
 }
 
 export async function forgotPassword(email: string): Promise<{ message: string; reset_token?: string; expires_at?: string }> {
@@ -159,6 +237,16 @@ export async function resetPassword(
   return (await r.json()) as { message: string };
 }
 
-export function logout() {
+export async function logout() {
+  const rt = refreshToken();
+  try {
+    await fetch(API + "/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt || "" }),
+    });
+  } catch {
+    /* offline */
+  }
   clearToken();
 }

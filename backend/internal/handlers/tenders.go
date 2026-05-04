@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,20 +44,33 @@ func CreateTender(db *sql.DB) gin.HandlerFunc {
 func ListTenders(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")
+		admin := strings.EqualFold(strings.TrimSpace(c.GetString("role")), "admin")
 		page, err := util.ParsePagination(c)
 		if err != nil {
 			util.BadRequest(c, err.Error())
 			return
 		}
 		var total int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM tenders WHERE owner_id=$1`, uid).Scan(&total); err != nil {
-			util.InternalError(c, err.Error())
-			return
+		var rows *sql.Rows
+		if admin {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM tenders`).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
+			rows, err = db.Query(
+				`SELECT id, title, status, created_at FROM tenders ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+				page.Limit, page.Offset,
+			)
+		} else {
+			if err := db.QueryRow(`SELECT COUNT(*) FROM tenders WHERE owner_id=$1`, uid).Scan(&total); err != nil {
+				util.InternalError(c, err.Error())
+				return
+			}
+			rows, err = db.Query(
+				`SELECT id, title, status, created_at FROM tenders WHERE owner_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+				uid, page.Limit, page.Offset,
+			)
 		}
-		rows, err := db.Query(
-			`SELECT id, title, status, created_at FROM tenders WHERE owner_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-			uid, page.Limit, page.Offset,
-		)
 		if err != nil {
 			util.InternalError(c, err.Error())
 			return
@@ -183,6 +197,7 @@ func UploadTenderDocument(db *sql.DB) gin.HandlerFunc {
 		if _, err := db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID); err != nil {
 			log.Printf("document_ocr_persist_failed document_id=%s err=%v", docID, err)
 		}
+		tryMirrorDocumentToS3(db, docID, dest, name)
 
 		WriteAudit(db, uid, tenderID, "document.uploaded", map[string]any{"document_id": docID, "tender_id": tenderID})
 

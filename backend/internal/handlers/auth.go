@@ -132,8 +132,18 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		id := uuid.NewString()
-		_, err = db.Exec(`INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)`, id, email, string(hash))
+		refresh, err := newRefreshRaw()
 		if err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			util.InternalError(c, "database transaction error")
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`INSERT INTO users (id, email, password_hash, role) VALUES ($1,$2,$3,'officer')`, id, email, string(hash)); err != nil {
 			if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
 				util.Conflict(c, "an account with this email already exists")
 			} else {
@@ -141,12 +151,20 @@ func Register(db *sql.DB) gin.HandlerFunc {
 			}
 			return
 		}
-		token, err := middleware.GenerateToken(id, email)
+		if err := insertRefreshTokenTx(tx, id, refresh); err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			util.InternalError(c, "database error")
+			return
+		}
+		access, err := middleware.GenerateAccessToken(id, email, "officer")
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"token": token, "user_id": id})
+		c.JSON(http.StatusCreated, authTokenResponse(access, refresh, id))
 	}
 }
 
@@ -162,8 +180,8 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			util.BadRequest(c, "email is required")
 			return
 		}
-		var id, hash string
-		err := db.QueryRow(`SELECT id, password_hash FROM users WHERE email=$1`, email).Scan(&id, &hash)
+		var id, hash, role string
+		err := db.QueryRow(`SELECT id, password_hash, COALESCE(role,'officer') FROM users WHERE email=$1`, email).Scan(&id, &hash, &role)
 		if err == sql.ErrNoRows {
 			util.Unauthorized(c, "invalid credentials")
 			return
@@ -176,12 +194,21 @@ func Login(db *sql.DB) gin.HandlerFunc {
 			util.Unauthorized(c, "invalid credentials")
 			return
 		}
-		token, err := middleware.GenerateToken(id, email)
+		refresh, err := newRefreshRaw()
+		if err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		if err := insertRefreshTokenDB(db, id, refresh); err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		access, err := middleware.GenerateAccessToken(id, email, role)
 		if err != nil {
 			util.InternalError(c, "failed to generate token")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"token": token, "user_id": id})
+		c.JSON(http.StatusOK, authTokenResponse(access, refresh, id))
 	}
 }
 
@@ -302,6 +329,10 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 			util.InternalError(c, "failed to update password")
 			return
 		}
+		var resetUserID string
+		if err := tx.QueryRow(`SELECT id::text FROM users WHERE email=$1`, req.Email).Scan(&resetUserID); err == nil {
+			_, _ = tx.Exec(`UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=$1::uuid AND revoked_at IS NULL`, resetUserID)
+		}
 		if _, err := tx.Exec(`UPDATE password_reset_tokens SET used=true WHERE id=$1`, tokenID); err != nil {
 			util.InternalError(c, "failed to consume reset token")
 			return
@@ -315,5 +346,104 @@ func ResetPassword(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Password reset successful. You can now sign in."})
+	}
+}
+
+func authTokenResponse(access, refresh, userID string) gin.H {
+	return gin.H{
+		"access_token":  access,
+		"refresh_token": refresh,
+		"token":         access,
+		"token_type":    "Bearer",
+		"expires_in":    int(middleware.AccessTokenTTL().Seconds()),
+		"user_id":       userID,
+	}
+}
+
+type refreshBody struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// RefreshSession rotates refresh token and returns a new access token.
+func RefreshSession(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body refreshBody
+		if err := c.ShouldBindJSON(&body); err != nil {
+			util.BadRequest(c, "refresh_token required")
+			return
+		}
+		h := hashRefreshToken(strings.TrimSpace(body.RefreshToken))
+		var uid, email, role string
+		err := db.QueryRow(`
+			SELECT u.id::text, u.email, COALESCE(u.role,'officer')
+			  FROM refresh_tokens r
+			  JOIN users u ON u.id = r.user_id
+			 WHERE r.token_hash = $1 AND r.revoked_at IS NULL AND r.expires_at > now()`, h).Scan(&uid, &email, &role)
+		if err == sql.ErrNoRows {
+			util.Unauthorized(c, "invalid refresh token")
+			return
+		}
+		if err != nil {
+			util.InternalError(c, "lookup failed")
+			return
+		}
+		raw, err := newRefreshRaw()
+		if err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			util.InternalError(c, "database transaction error")
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`UPDATE refresh_tokens SET revoked_at=now() WHERE token_hash=$1`, h); err != nil {
+			util.InternalError(c, "rotate session")
+			return
+		}
+		if err := insertRefreshTokenTx(tx, uid, raw); err != nil {
+			util.InternalError(c, "session error")
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			util.InternalError(c, "commit")
+			return
+		}
+		access, err := middleware.GenerateAccessToken(uid, email, role)
+		if err != nil {
+			util.InternalError(c, "failed to generate token")
+			return
+		}
+		c.JSON(http.StatusOK, authTokenResponse(access, raw, uid))
+	}
+}
+
+type logoutBody struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// LogoutSession revokes a single refresh token (no bearer required).
+func LogoutSession(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body logoutBody
+		_ = c.ShouldBindJSON(&body)
+		if err := revokeRefreshByRaw(db, strings.TrimSpace(body.RefreshToken)); err != nil {
+			util.InternalError(c, "logout failed")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "signed out"})
+	}
+}
+
+// LogoutAllSessions revokes every refresh token for the authenticated user.
+func LogoutAllSessions(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetString("user_id")
+		if err := revokeAllRefreshForUser(db, uid); err != nil {
+			util.InternalError(c, "logout failed")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "all sessions revoked"})
 	}
 }

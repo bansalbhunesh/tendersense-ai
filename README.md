@@ -43,14 +43,21 @@ Indian government procurement runs on long PDFs and inconsistent evidence. Today
 | **Sovereign mode** | `LLM_BACKEND=disabled\|bhashini\|anthropic\|groq` swaps the reasoning surface without rebuilding the image; deterministic mode runs zero foreign-cloud calls |
 | **Officer UI** | Dashboard with pagination, tender workspace, **reasoning graph** (verdict-color-coded, click-to-detail, evidence chips, "Copy as JSON"), two-pane review queue with criterion-level overrides, audit log, in-app toasts, **EN ↔ हिं i18next toggle** persisted per officer |
 | **Persistence** | Postgres-backed eval jobs survive restarts; partial unique index prevents duplicate runs per tender |
-| **Auth** | JWT + bcrypt, rate-limited login/eval, structured error envelope |
+| **Auth** | JWT access + **refresh tokens** (DB-backed), `POST /auth/refresh` + logout, tunable `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL`; optional **`admin`** role for cross-tenant listing |
 | **Demo pack** | **4** deterministic golden PDFs in `demo/pdfs/` (incl. Devanagari `04_TENDER_BHARAT_HINDI.pdf`), throughput benchmark (`benchmark.py`), reusable eval-payload fixture, 2-minute pitch script |
 
 > **Bharat-first?** See [`docs/BHARAT_READINESS.md`](docs/BHARAT_READINESS.md) for the full sovereignty / Indic / MeitY-alignment story.
 
 ### Demo media and public URL (submission polish)
 
-There is **no hosted demo by default** (sovereign / self-hosted mode): reviewers should use Docker above, or deploy backend + AI + Postgres to Fly.io, Railway, or similar and paste the **live URL** here. For pitch decks and judges, add **2–3 screenshots** (officer dashboard, reasoning graph, review queue) and optionally a **short screen recording** — link them from this section when ready.
+There is **no hosted demo by default** (sovereign / self-hosted mode). Use **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** for Fly.io / MinIO / env wiring, then paste your **live URL** here.
+
+**Screenshots / video:** add files under [`docs/screenshots/`](docs/screenshots/) (e.g. `dashboard.png`, `reasoning-graph.png`, `review-queue.png`) and link them below before judging:
+
+- Dashboard: _add link_
+- Reasoning graph: _add link_
+- Review queue: _add link_
+- Optional Loom / mp4: _add link_
 
 ---
 

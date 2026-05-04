@@ -160,6 +160,7 @@ func UploadBidderDocument(db *sql.DB) gin.HandlerFunc {
 		}
 		payload, _ := json.Marshal(ocrRes)
 		db.Exec(`UPDATE documents SET quality_score=$1, ocr_payload=$2::jsonb WHERE id=$3`, ocrRes.Quality, string(payload), docID)
+		tryMirrorDocumentToS3(db, docID, dest, name)
 		WriteAudit(db, uid, tenderID, "bidder.document.uploaded", map[string]any{"document_id": docID, "bidder_id": bidderID})
 		c.JSON(http.StatusCreated, gin.H{"document_id": docID, "ocr": ocrRes})
 	}

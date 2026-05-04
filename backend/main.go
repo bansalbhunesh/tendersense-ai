@@ -92,6 +92,8 @@ func main() {
 		{
 			authLimited.POST("/auth/register", handlers.Register(database))
 			authLimited.POST("/auth/login", handlers.Login(database))
+			authLimited.POST("/auth/refresh", handlers.RefreshSession(database))
+			authLimited.POST("/auth/logout", handlers.LogoutSession(database))
 			authLimited.POST("/auth/forgot-password", handlers.ForgotPassword(database))
 			authLimited.POST("/auth/reset-password", handlers.ResetPassword(database))
 		}
@@ -117,6 +119,8 @@ func main() {
 			auth.GET("/review/queue", handlers.ReviewQueue(database))
 			auth.POST("/review/override", handlers.SubmitOverride(database))
 			auth.GET("/audit", handlers.AuditLog(database))
+			auth.GET("/documents/:id/presign", handlers.DocumentPresign(database))
+			auth.POST("/auth/logout-all", handlers.LogoutAllSessions(database))
 		}
 	}
 

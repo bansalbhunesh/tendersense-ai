@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -827,27 +828,48 @@ def build_graph(
     return {"tender_id": tender_id, "nodes": nodes, "edges": edges}
 
 
+def _evaluate_pair(args: tuple[dict[str, Any], str, list[Any]]) -> dict[str, Any]:
+    crit, bid, docs = args
+    return evaluate_criterion(crit, bid, docs)
+
+
 def run_evaluation(payload: dict[str, Any]) -> dict[str, Any]:
     tender_id = str(payload.get("tender_id", ""))
     criteria = list(payload.get("criteria") or [])
     bidders = list(payload.get("bidders") or [])
 
-    decisions: list[dict[str, Any]] = []
-    review_items: list[dict[str, Any]] = []
-
+    pairs: list[tuple[dict[str, Any], str, list[Any]]] = []
     for b in bidders:
         bid = str(b.get("bidder_id"))
         docs = list(b.get("documents") or [])
         for crit in criteria:
-            d = evaluate_criterion(crit, bid, docs)
-            d["tender_id"] = tender_id
-            if d.get("verdict") == "NEEDS_REVIEW":
-                review_items.append({
-                    "tender_id": tender_id, "bidder_id": bid,
-                    "criterion_id": d.get("criterion_id"),
-                    "reason": d.get("reason"), "confidence": d.get("confidence"),
-                })
-            decisions.append(d)
+            pairs.append((crit, bid, docs))
+
+    decisions: list[dict[str, Any]] = []
+    review_items: list[dict[str, Any]] = []
+
+    if not pairs:
+        graph = build_graph(tender_id, criteria, decisions)
+        return {"graph": graph, "decisions": decisions, "review_items": review_items}
+
+    max_workers = int(os.getenv("EVAL_PARALLEL_WORKERS", "6"))
+    if max_workers < 1:
+        max_workers = 1
+    max_workers = min(max_workers, len(pairs))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        raw_decisions = list(ex.map(_evaluate_pair, pairs))
+
+    for d in raw_decisions:
+        bid = str(d.get("bidder_id", ""))
+        d["tender_id"] = tender_id
+        if d.get("verdict") == "NEEDS_REVIEW":
+            review_items.append({
+                "tender_id": tender_id, "bidder_id": bid,
+                "criterion_id": d.get("criterion_id"),
+                "reason": d.get("reason"), "confidence": d.get("confidence"),
+            })
+        decisions.append(d)
 
     graph = build_graph(tender_id, criteria, decisions)
     return {"graph": graph, "decisions": decisions, "review_items": review_items}

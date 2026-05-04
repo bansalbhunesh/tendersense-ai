@@ -46,10 +46,14 @@ func authRegister(t *testing.T, r *gin.Engine, email, password string) string {
 		t.Fatalf("register: status=%d body=%s", w.Code, w.Body.String())
 	}
 	var out struct {
-		Token string `json:"token"`
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
+	}
+	if out.AccessToken != "" {
+		return out.AccessToken
 	}
 	return out.Token
 }

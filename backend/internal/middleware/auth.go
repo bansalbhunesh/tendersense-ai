@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +18,7 @@ import (
 type Claims struct {
 	UserID string `json:"uid"`
 	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -23,20 +26,35 @@ func JWTSecret() []byte {
 	return []byte(os.Getenv("JWT_SECRET"))
 }
 
-func GenerateToken(userID, email string) (string, error) {
+// GenerateAccessToken issues a short-lived JWT (see JWT_ACCESS_TTL) with a unique jti.
+func GenerateAccessToken(userID, email, role string) (string, error) {
 	if len(JWTSecret()) == 0 {
 		return "", errors.New("JWT_SECRET not configured")
+	}
+	jti, err := randomJTI()
+	if err != nil {
+		return "", err
 	}
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ID:        jti,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTL())),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString(JWTSecret())
+}
+
+func randomJTI() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func AuthRequired() gin.HandlerFunc {
@@ -70,6 +88,11 @@ func AuthRequired() gin.HandlerFunc {
 		}
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
+		if claims.Role != "" {
+			c.Set("role", claims.Role)
+		} else {
+			c.Set("role", "officer")
+		}
 		c.Next()
 	}
 }

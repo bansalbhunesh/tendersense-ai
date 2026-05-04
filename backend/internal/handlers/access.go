@@ -110,7 +110,21 @@ func safeUploadFilename(original string) (base string, ok bool) {
 }
 
 // RequireTenderOwner sends 404/403/500 JSON and returns false if the caller cannot access the tender.
+// Users with role "admin" may access any tender (read/write) for support and audits.
 func RequireTenderOwner(db *sql.DB, c *gin.Context, tenderID string) bool {
+	if strings.EqualFold(strings.TrimSpace(c.GetString("role")), "admin") {
+		var one int
+		err := db.QueryRow(`SELECT 1 FROM tenders WHERE id=$1`, tenderID).Scan(&one)
+		if err == sql.ErrNoRows {
+			util.NotFound(c, "tender not found")
+			return false
+		}
+		if err != nil {
+			util.InternalError(c, "lookup failed")
+			return false
+		}
+		return true
+	}
 	uid := c.GetString("user_id")
 	var owner string
 	err := db.QueryRow(`SELECT owner_id::text FROM tenders WHERE id=$1`, tenderID).Scan(&owner)
@@ -131,6 +145,20 @@ func RequireTenderOwner(db *sql.DB, c *gin.Context, tenderID string) bool {
 
 // RequireBidderForOwner resolves the bidder's tender and ensures the tender belongs to the caller.
 func RequireBidderForOwner(db *sql.DB, c *gin.Context, bidderID string) (tenderID string, ok bool) {
+	if strings.EqualFold(strings.TrimSpace(c.GetString("role")), "admin") {
+		err := db.QueryRow(`
+			SELECT b.tender_id::text
+			FROM bidders b WHERE b.id=$1`, bidderID).Scan(&tenderID)
+		if err == sql.ErrNoRows {
+			util.NotFound(c, "bidder not found")
+			return "", false
+		}
+		if err != nil {
+			util.InternalError(c, "lookup failed")
+			return "", false
+		}
+		return tenderID, true
+	}
 	uid := c.GetString("user_id")
 	var owner string
 	err := db.QueryRow(`

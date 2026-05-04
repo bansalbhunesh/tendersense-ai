@@ -82,6 +82,12 @@ services:
       - RESET_EMAIL_FROM=${RESET_EMAIL_FROM:-}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:5173}
       - ALLOW_INSECURE_RESET_TOKEN_RESPONSE=${ALLOW_INSECURE_RESET_TOKEN_RESPONSE:-false}
+      # Optional object storage (see docs/DEPLOYMENT.md). Example with compose profile `objectstore`:
+      # - S3_ENDPOINT=minio:9000
+      # - S3_USE_SSL=false
+      # - S3_ACCESS_KEY=minio
+      # - S3_SECRET_KEY=miniochange123
+      # - S3_BUCKET=tendersense
     depends_on:
       db:
         condition: service_healthy
@@ -95,6 +101,21 @@ services:
     volumes:
       - uploads:/app/data/uploads
 
+  # Optional S3-compatible store (enable with: docker compose --profile objectstore up)
+  minio:
+    image: minio/minio:latest
+    profiles: ["objectstore"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniochange123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
 volumes:
   pgdata:
   uploads:
+  miniodata:

@@ -1,5 +1,5 @@
 # TenderSense AI — common dev workflows. Run `make help` for the full list.
-.PHONY: help install dev test test-backend test-ai test-frontend bench demo smoke-bharat clean stop
+.PHONY: help install dev test test-backend test-backend-integration test-ai test-frontend bench demo smoke-bharat clean stop
 
 PORT_AI ?= 8081
 PORT_BENCH ?= 8083
@@ -22,6 +22,9 @@ test: test-backend test-ai test-frontend ## Run every test suite
 
 test-backend: ## go test ./...
 	cd backend && go test ./...
+
+test-backend-integration: ## go test with -tags=integration (needs TEST_DATABASE_URL)
+	cd backend && go test -tags=integration ./... -count=1
 
 test-ai: ## pytest -q (ai-service)
 	cd ai-service && . .venv/bin/activate && pytest -q
